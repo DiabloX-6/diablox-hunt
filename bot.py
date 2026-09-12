@@ -1326,7 +1326,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     # File handler
     app.add_handler(MessageHandler(
-        filters.Document.FileExtension("txt") & filters.User(user_id=OWNER_ID),
+        filters.Document.FileExtension("txt") & filters.User(user_id=5728930563),
         handle_tt_file
     ))
     app.add_error_handler(error_handler)
