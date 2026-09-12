@@ -41,7 +41,7 @@ NAMA_BOT = "DiabloXhunt"
 NAMA_OWNER = "Naddd"
 OWNER_USERNAME = "ZerooTwo2"
 OWNER_ID = 123456789  # <-- GANTI KE ID TELEGRAM KAMU
-VERSION = "2.5"
+VERSION = "2.6"
 BANNER_URL = os.getenv("BANNER_URL", "https://i.imgur.com/pp1gIFY.jpeg")
 # =================================================
 
@@ -138,6 +138,21 @@ def summary_text(findings) -> str:
     return text
 
 
+async def safe_edit(query, caption, keyboard=None):
+    """Edit caption kalau pesan berupa photo, fallback ke text."""
+    try:
+        await query.edit_message_caption(
+            caption=caption, parse_mode="Markdown", reply_markup=keyboard
+        )
+    except Exception:
+        try:
+            await query.edit_message_text(
+                caption, parse_mode="Markdown", reply_markup=keyboard
+            )
+        except Exception as e:
+            logger.warning(f"safe_edit gagal: {e}")
+
+
 # ================== KEYBOARD MENUS ==================
 
 def main_menu_keyboard(uid):
@@ -229,68 +244,7 @@ def paket_keyboard():
     ])
 
 
-# ================== INFO & USER COMMANDS ==================
-
-async def myaccount_cmd(update, context):
-    uid = update.effective_user.id
-    if is_owner_uid(uid):
-        await update.message.reply_text("👑 Kamu owner. Ketik /start")
-        return
-    if not is_registered(uid):
-        await update.message.reply_text("❌ Belum terdaftar. Ketik `/register <nama>`", parse_mode="Markdown")
-        return
-    user = get_user(uid)
-    hari = sisa_hari(uid)
-    text = (
-        "╔══════════════════════╗\n"
-        "║  👤 *AKUN SAYA*       ║\n"
-        "╚══════════════════════╝\n\n"
-        f"🆔 ID       : `{user['id']}`\n"
-        f"📛 Nama     : *{user['nama']}*\n"
-        f"📦 Paket    : `{user['paket'].upper()}`\n"
-        f"🎯 Fitur    : `{user['fitur']}`\n"
-        f"📅 Mulai    : `{user['start']}`\n"
-        f"⏰ Expired  : `{user['expired']}`\n"
-        f"⏳ Sisa     : *{hari} hari*\n"
-        f"🚦 Status   : `{user['status'].upper()}`\n"
-    )
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=owner_button())
-
-
-async def paket_cmd(update, context):
-    paket = get_paket_list()
-    text = (
-        "╔══════════════════════╗\n"
-        "║  💎 *DAFTAR PAKET*    ║\n"
-        "╚══════════════════════╝\n\n"
-    )
-    emoji_map = {"trial": "🎁", "basic": "🥉", "premium": "🥈",
-                 "pro": "🥇", "lifetime": "👑"}
-    for nama, info in paket.items():
-        harga = "GRATIS" if info["harga"] == 0 else f"Rp {info['harga']:,}".replace(",", ".")
-        text += (
-            f"{emoji_map.get(nama, '📦')} *{nama.upper()}*\n"
-            f"   ⏱️ {info['durasi']} hari\n"
-            f"   💰 {harga}\n"
-            f"   🎯 {info['fitur']}\n"
-            "─────────────────────\n"
-        )
-    text += f"\n📞 Hubungi owner: {owner_link()}"
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=owner_button())
-
-
-async def owner_cmd(update, context):
-    text = (
-        "╔══════════════════════╗\n"
-        "║  👑 *OWNER INFO*      ║\n"
-        "╚══════════════════════╝\n\n"
-        f"📛 Nama     : *{NAMA_OWNER}*\n"
-        f"💬 Username : @{OWNER_USERNAME}\n"
-        f"🤖 Bot      : *{NAMA_BOT}*\n"
-        f"📌 Versi    : `{VERSION}`\n"
-    )
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=owner_button())
-
+# ================== START & USER COMMANDS ==================
 
 async def start(update, context):
     uid = update.effective_user.id
@@ -323,7 +277,6 @@ async def start(update, context):
             f"👋 Halo, *{user['nama']}*!\n\n"
             f"📦 *Paket*  : `{user['paket'].upper()}`\n"
             f"⏰ *Sisa*   : `{hari} hari`\n"
-            f"📅 *Expired*: `{user['expired']}`\n"
             f"🚦 *Status* : 🟢 `ACTIVE`\n\n"
             "✨ *Pilih menu di bawah:*"
         )
@@ -336,13 +289,54 @@ async def start(update, context):
         )
     except Exception as e:
         logger.error(f"Banner error: {e}")
-        await update.message.reply_text(
-            caption, parse_mode="Markdown",
-            reply_markup=main_menu_keyboard(uid)
-        )
+        await update.message.reply_text(caption, parse_mode="Markdown",
+                                         reply_markup=main_menu_keyboard(uid))
 
 
-# ================== TIKTOK CHECKER (OWNER ONLY) ==================
+async def myaccount_cmd(update, context):
+    uid = update.effective_user.id
+    if is_owner_uid(uid):
+        await update.message.reply_text("👑 Kamu owner.")
+        return
+    if not is_registered(uid):
+        await update.message.reply_text("❌ Belum terdaftar.")
+        return
+    user = get_user(uid)
+    hari = sisa_hari(uid)
+    await update.message.reply_text(
+        f"👤 *AKUN SAYA*\n\n"
+        f"🆔 `{user['id']}`\n"
+        f"📛 *{user['nama']}*\n"
+        f"📦 `{user['paket'].upper()}`\n"
+        f"⏳ *{hari} hari*\n"
+        f"🚦 `{user['status'].upper()}`",
+        parse_mode="Markdown", reply_markup=owner_button()
+    )
+
+
+async def paket_cmd(update, context):
+    paket = get_paket_list()
+    text = "💎 *DAFTAR PAKET*\n\n"
+    emoji_map = {"trial": "🎁", "basic": "🥉", "premium": "🥈",
+                 "pro": "🥇", "lifetime": "👑"}
+    for nama, info in paket.items():
+        harga = "GRATIS" if info["harga"] == 0 else f"Rp {info['harga']:,}".replace(",", ".")
+        text += f"{emoji_map.get(nama, '📦')} *{nama.upper()}* — {info['durasi']}h — *{harga}*\n"
+    text += f"\n📞 {owner_link()}"
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=owner_button())
+
+
+async def owner_cmd(update, context):
+    await update.message.reply_text(
+        f"👑 *OWNER INFO*\n\n"
+        f"📛 *{NAMA_OWNER}*\n"
+        f"💬 @{OWNER_USERNAME}\n"
+        f"📌 v{VERSION}",
+        parse_mode="Markdown", reply_markup=owner_button()
+    )
+
+
+# ================== TIKTOK CHECKER ==================
 
 async def ttcheck_cmd(update, context):
     uid = update.effective_user.id
@@ -350,18 +344,15 @@ async def ttcheck_cmd(update, context):
         await update.message.reply_text("🚫 Command ini hanya untuk owner.")
         return
     await update.message.reply_text(
-        "╔══════════════════════╗\n"
-        "║  🎵 *TIKTOK CHECKER*  ║\n"
-        "╚══════════════════════╝\n\n"
+        "🎵 *TIKTOK CHECKER*\n\n"
         "📄 Kirim file `.txt` berisi combo `email:password`\n\n"
         "⚙️ *Setting:*\n"
         "• Threads: `10`\n"
         "• Delay: `1.5-4s` + backoff\n"
         "• Proxy: `aktif jika ada proxy.txt`\n"
         "• Retry: `3x`\n"
-        "• Rotasi UA + X-Gorgon + X-Argus + X-Ladon\n"
-        "• Proxy health check: `aktif`\n"
-        "• Validasi combo: `aktif`",
+        "• Rotasi UA + X-Gorgon + X-Argus + X-Ladon\n\n"
+        "🔄 Scrape proxy: `/scrapproxy`",
         parse_mode="Markdown"
     )
 
@@ -409,7 +400,10 @@ async def handle_tt_file(update, context):
                 pass
 
     def sync_progress(done, total):
-        asyncio.run_coroutine_threadsafe(progress(done, total), loop)
+        try:
+            asyncio.run_coroutine_threadsafe(progress(done, total), loop)
+        except:
+            pass
 
     result = await loop.run_in_executor(
         None, lambda: run_tiktok_checker(combos, sync_progress)
@@ -425,7 +419,10 @@ async def handle_tt_file(update, context):
         f"🚫 SKIPPED  : {result.get('skipped', 0)}\n"
         f"📦 TOTAL    : {result['total']}"
     )
-    await status_msg.edit_text(msg, parse_mode="Markdown")
+    try:
+        await status_msg.edit_text(msg, parse_mode="Markdown")
+    except:
+        await update.message.reply_text(msg, parse_mode="Markdown")
 
     if result["hits"]:
         out = f"tt_hit_{uid}.txt"
@@ -461,18 +458,27 @@ async def scrapoxy_cmd(update, context):
 
     try:
         n = await loop.run_in_executor(None, refresh_proxy_file)
-        await msg.edit_text(
-            f"✅ *Scrape selesai!*\n\n"
-            f"📦 Proxy hidup: `{n}`\n"
-            f"📄 Tersimpan di `proxy.txt`\n\n"
-            f"Proxy bakal dipakai di TikTok checker berikutnya.",
-            parse_mode="Markdown"
-        )
+        if n > 0:
+            text = (
+                f"✅ *Scrape selesai!*\n\n"
+                f"📦 Proxy hidup: `{n}`\n"
+                f"📄 Tersimpan di `proxy.txt`\n\n"
+                f"Proxy bakal dipakai di TikTok checker berikutnya."
+            )
+        else:
+            text = (
+                f"⚠️ *Scrape selesai, tapi 0 proxy hidup*\n\n"
+                f"Coba scrape ulang, sumber proxy gratis sering down."
+            )
+        try:
+            await msg.edit_text(text, parse_mode="Markdown")
+        except:
+            await update.message.reply_text(text, parse_mode="Markdown")
     except Exception as e:
         await msg.edit_text(f"❌ Error: {e}")
 
 
-# ================== CALLBACK HANDLER ==================
+# ================== CALLBACK ==================
 
 async def menu_callback(update, context):
     query = update.callback_query
@@ -483,202 +489,166 @@ async def menu_callback(update, context):
     if not is_owner_uid(uid):
         status, pesan = cek_akses(uid)
         if status in ("unregistered", "banned", "expired"):
-            try:
-                await query.edit_message_caption(
-                    caption=pesan, parse_mode="Markdown", reply_markup=owner_button()
-                )
-            except:
-                await query.edit_message_text(
-                    pesan, parse_mode="Markdown", reply_markup=owner_button()
-                )
+            await safe_edit(query, pesan, owner_button())
             return
 
     user = get_user(uid) if not is_owner_uid(uid) else None
     hari = sisa_hari(uid) if user else 0
 
     def header(title, emoji="✨"):
-        return (
-            "╔══════════════════════╗\n"
-            f"║  {emoji} *{title}*  ║\n"
-            "╚══════════════════════╝\n\n"
-        )
-
-    async def edit_caption(caption, keyboard):
-        try:
-            await query.edit_message_caption(
-                caption=caption, parse_mode="Markdown", reply_markup=keyboard
-            )
-        except:
-            await query.edit_message_text(
-                caption, parse_mode="Markdown", reply_markup=keyboard
-            )
+        return f"╔══════════════════════╗\n║  {emoji} *{title}*\n╚══════════════════════╝\n\n"
 
     if data == "menu_main":
         if is_owner_uid(uid):
             caption = (
                 header("OWNER ACCESS", "👑") +
-                f"👑 *Owner* : `{NAMA_OWNER}`\n"
-                f"📡 *Status*: 🟢 `ONLINE`\n"
-                f"👥 *Users* : `{user_count()}`\n"
-                f"🔧 *Versi* : `v{VERSION}`\n\n"
+                f"👑 *{NAMA_OWNER}*\n"
+                f"📡 🟢 `ONLINE`\n"
+                f"👥 `{user_count()}`\n"
+                f"🔧 `v{VERSION}`\n\n"
                 "✨ *Pilih menu:*"
             )
         else:
             caption = (
                 header("DIABLOX HUNT", "🛡️") +
                 f"👋 Halo, *{user['nama']}*!\n\n"
-                f"📦 *Paket*  : `{user['paket'].upper()}`\n"
-                f"⏰ *Sisa*   : `{hari} hari`\n"
-                f"🚦 *Status* : 🟢 `ACTIVE`\n\n"
+                f"📦 `{user['paket'].upper()}`\n"
+                f"⏰ `{hari} hari`\n"
+                f"🚦 🟢 `ACTIVE`\n\n"
                 "✨ *Pilih menu:*"
             )
-        await edit_caption(caption, main_menu_keyboard(uid))
+        await safe_edit(query, caption, main_menu_keyboard(uid))
         return
 
     if data == "menu_recon":
-        caption = (
+        await safe_edit(query,
             header("RECON TOOLS", "🔍") +
-            "🌐 *DNS*  🔎 *Subdomain*  📋 *WHOIS*\n"
-            "🌍 *IP*   🔒 *SSL*  🔧 *Tech*\n"
-            "🛡️ *WAF*  🔭 *Shodan*  🕵️ *Dork*\n"
-            "📡 *AXFR*  🔄 *Reverse DNS*\n\n"
-            "⚠️ _Klik tombol untuk pakai_"
-        )
-        await edit_caption(caption, recon_menu_keyboard())
+            "🌐 DNS  🔎 Subdomain\n📋 WHOIS  🌍 IP\n"
+            "🔒 SSL  🔧 Tech\n🛡️ WAF  🔭 Shodan\n"
+            "🕵️ Dork  📡 AXFR\n🔄 Reverse DNS",
+            recon_menu_keyboard())
         return
 
     if data == "menu_vuln":
         if not is_owner_uid(uid) and user and user["fitur"] == "recon":
-            await query.answer("🔒 Paket BASIC hanya Recon. Upgrade ke PREMIUM!", show_alert=True)
+            await query.answer("🔒 Paket BASIC hanya Recon!", show_alert=True)
             return
-        caption = (
+        await safe_edit(query,
             header("VULN SCANNER", "💥") +
-            "🚀 *Full Scan*  💉 *SQLi*  🎯 *XSS*\n"
-            "📂 *LFI*  🌐 *SSRF*  🔀 *Redirect*\n"
-            "🔓 *CORS*  ⚙️ *Methods*  📁 *Dir*\n\n"
-            "⚠️ _Gunakan hanya untuk domain sendiri_"
-        )
-        await edit_caption(caption, vuln_menu_keyboard())
+            "🚀 Full Scan  💉 SQLi  🎯 XSS\n"
+            "📂 LFI  🌐 SSRF  🔀 Redirect\n"
+            "🔓 CORS  ⚙️ Methods  📁 Dir",
+            vuln_menu_keyboard())
         return
 
     if data == "menu_tools":
-        caption = (
-            header("TOOLS & UTILITY", "🧰") +
-            "🔐 *Base64 Encode*  🔓 *Base64 Decode*\n"
-            "#️⃣ *Hash*  🎫 *JWT Decode*\n\n"
-            "⚠️ _Klik tombol untuk pakai_"
-        )
-        await edit_caption(caption, tools_menu_keyboard())
+        await safe_edit(query,
+            header("TOOLS", "🧰") +
+            "🔐 Base64 Encode  🔓 Base64 Decode\n"
+            "#️⃣ Hash  🎫 JWT Decode",
+            tools_menu_keyboard())
         return
 
     if data == "menu_tiktok":
         if not is_owner_uid(uid):
-            await query.answer("🔒 TikTok Checker hanya untuk owner!", show_alert=True)
+            await query.answer("🔒 Owner only!", show_alert=True)
             return
-        caption = (
+        await safe_edit(query,
             header("TIKTOK CHECKER", "🎵") +
             "📄 *Cara pakai:*\n"
             "1. Ketik `/ttcheck`\n"
-            "2. Kirim file `.txt` combo `email:password`\n"
+            "2. Kirim file `.txt` combo\n"
             "3. Tunggu proses\n\n"
-            "⚙️ *Setting:*\n"
-            "• Threads: 10\n"
-            "• Delay: 1.5-4s + backoff\n"
-            "• Proxy: aktif jika ada proxy.txt\n"
-            "• Rotasi UA + X-Gorgon + X-Argus + X-Ladon\n\n"
-            "🔄 *Scrape proxy:* `/scrapproxy`\n\n"
-            "🔒 _Fitur ini hanya untuk owner_"
-        )
-        await edit_caption(caption, InlineKeyboardMarkup([
-            [InlineKeyboardButton("🚀 Mulai Check", callback_data="tiktok_start")],
-            [InlineKeyboardButton("🔄 Scrape Proxy", callback_data="tiktok_scrape")],
-            [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
-        ]))
+            "🔄 Scrape proxy: tombol di bawah\n\n"
+            "🔒 Owner only",
+            InlineKeyboardMarkup([
+                [InlineKeyboardButton("🚀 Mulai Check", callback_data="tiktok_start")],
+                [InlineKeyboardButton("🔄 Scrape Proxy", callback_data="tiktok_scrape")],
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
+            ]))
         return
 
     if data == "tiktok_start":
         if not is_owner_uid(uid):
             await query.answer("🔒 Owner only!", show_alert=True)
             return
-        await edit_caption(
+        await safe_edit(query,
             header("TIKTOK CHECKER", "🎵") +
             "📄 Kirim file `.txt` combo `email:password` sekarang.\n\n"
             "Format:\n```\nemail1:pass1\nemail2:pass2\n```",
             InlineKeyboardMarkup([
                 [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_tiktok")],
-            ])
-        )
+            ]))
         return
 
     if data == "tiktok_scrape":
         if not is_owner_uid(uid):
             await query.answer("🔒 Owner only!", show_alert=True)
             return
-        await query.edit_message_text(
+        await safe_edit(query,
             "🔄 *Scrape proxy dimulai...*\n\n"
             "1. Fetch dari 18 sumber\n"
             "2. Dedup\n"
             "3. Health check (~3-10 menit)\n\n"
-            "⏳ Tunggu...",
-            parse_mode="Markdown"
-        )
+            "⏳ Tunggu...")
         loop = asyncio.get_event_loop()
         try:
             n = await loop.run_in_executor(None, refresh_proxy_file)
-            await query.edit_message_text(
-                f"✅ *Scrape selesai!*\n\n"
-                f"📦 Proxy hidup: `{n}`\n"
-                f"📄 Tersimpan di `proxy.txt`",
-                parse_mode="Markdown"
-            )
+            if n > 0:
+                text = (
+                    f"✅ *Scrape selesai!*\n\n"
+                    f"📦 Proxy hidup: `{n}`\n"
+                    f"📄 Tersimpan di `proxy.txt`"
+                )
+            else:
+                text = "⚠️ *0 proxy hidup.* Coba scrape ulang."
+            await safe_edit(query, text, InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_tiktok")],
+            ]))
         except Exception as e:
-            await query.edit_message_text(f"❌ Error: {e}")
+            await safe_edit(query, f"❌ Error: {e}")
         return
 
     if data == "menu_owner":
         if not is_owner_uid(uid):
-            await query.answer("❌ Hanya owner!", show_alert=True)
+            await query.answer("❌ Owner only!", show_alert=True)
             return
-        caption = (
+        await safe_edit(query,
             header("OWNER PANEL", "👑") +
-            f"📊 *Total User*: `{user_count()}`\n\n"
+            f"📊 Total User: `{user_count()}`\n\n"
             "➕ Add  ➖ Remove  ⏱️ Extend\n"
             "🚫 Ban  ✅ Unban  📋 List\n"
-            "🔍 Info  🔄 Cek Expired\n\n"
-            "⚠️ _Klik tombol untuk pakai_"
-        )
-        await edit_caption(caption, owner_menu_keyboard())
+            "🔍 Info  🔄 Cek Expired",
+            owner_menu_keyboard())
         return
 
     if data == "menu_akun":
         if is_owner_uid(uid):
             await query.answer("👑 Kamu owner!", show_alert=True)
             return
-        caption = (
+        await safe_edit(query,
             header("AKUN SAYA", "👤") +
             f"🆔 `{user['id']}`\n"
             f"📛 *{user['nama']}*\n"
             f"📦 `{user['paket'].upper()}`\n"
             f"⏳ *{hari} hari*\n"
-            f"🚦 `{user['status'].upper()}`\n"
-        )
-        await edit_caption(caption, InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎁 My Referral", callback_data="menu_myref")],
-            [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
-        ]))
+            f"🚦 `{user['status'].upper()}`",
+            InlineKeyboardMarkup([
+                [InlineKeyboardButton("🎁 My Referral", callback_data="menu_myref")],
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
+            ]))
         return
 
     if data == "menu_myref":
         stats = get_ref_stats(uid) or {"code": "-", "count": 0, "history": []}
-        caption = (
+        await safe_edit(query,
             header("REFERRAL", "🎁") +
             f"🎫 `{stats['code']}`\n\n"
             f"📊 Total: *{stats['count']}*\n"
-            f"🎁 Bonus: *+7 hari*\n"
-        )
-        await edit_caption(caption, InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_akun")],
-        ]))
+            f"🎁 Bonus: *+7 hari*",
+            InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_akun")],
+            ]))
         return
 
     if data == "menu_paket":
@@ -689,8 +659,8 @@ async def menu_callback(update, context):
         for nama, info in paket.items():
             harga = "GRATIS" if info["harga"] == 0 else f"Rp {info['harga']:,}".replace(",", ".")
             caption += f"{emoji_map.get(nama, '📦')} *{nama.upper()}* — {info['durasi']}h — *{harga}*\n"
-        caption += "\n💬 _Klik tombol untuk beli atau chat owner_"
-        await edit_caption(caption, paket_keyboard())
+        caption += "\n💬 _Klik tombol untuk beli_"
+        await safe_edit(query, caption, paket_keyboard())
         return
 
     prompts = {
@@ -706,18 +676,18 @@ async def menu_callback(update, context):
         "recon_axfr": "📡 `/axfr example.com`",
         "recon_rev": "🔄 `/rev 8.8.8.8`",
         "vuln_scan": "🚀 `/scan example.com`",
-        "vuln_sqli": "💉 `/sqli https://example.com/page?id=1`",
-        "vuln_xss": "🎯 `/xss https://example.com/search?q=test`",
-        "vuln_lfi": "📂 `/lfi https://example.com/file?name=index`",
-        "vuln_ssrf": "🌐 `/ssrf https://example.com/fetch?url=test`",
-        "vuln_redirect": "🔀 `/redirect https://example.com/redir?url=x`",
-        "vuln_cors": "🔓 `/cors https://example.com`",
-        "vuln_methods": "⚙️ `/methods https://example.com`",
-        "vuln_dir": "📁 `/dir https://example.com`",
+        "vuln_sqli": "💉 `/sqli <url>`",
+        "vuln_xss": "🎯 `/xss <url>`",
+        "vuln_lfi": "📂 `/lfi <url>`",
+        "vuln_ssrf": "🌐 `/ssrf <url>`",
+        "vuln_redirect": "🔀 `/redirect <url>`",
+        "vuln_cors": "🔓 `/cors <url>`",
+        "vuln_methods": "⚙️ `/methods <url>`",
+        "vuln_dir": "📁 `/dir <url>`",
         "tools_base64e": "🔐 `/base64e hello`",
         "tools_base64d": "🔓 `/base64d aGVsbG8=`",
         "tools_hash": "#️⃣ `/hash hello`",
-        "tools_jwt": "🎫 `/jwt eyJhbG...`",
+        "tools_jwt": "🎫 `/jwt <token>`",
         "owner_adduser": "➕ `/adduser <id> <nama> <paket>`",
         "owner_removeuser": "➖ `/removeuser <id>`",
         "owner_extend": "⏱️ `/extend <id> <hari>`",
@@ -729,200 +699,113 @@ async def menu_callback(update, context):
     }
 
     if data in prompts:
-        try:
-            await query.edit_message_caption(
-                caption=f"📝 *PROMPT*\n\n{prompts[data]}\n\n_Ketik perintah di chat._",
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
-                ])
-            )
-        except:
-            await query.edit_message_text(
-                f"📝 *PROMPT*\n\n{prompts[data]}\n\n_Ketik perintah di chat._",
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
-                ])
-            )
+        await safe_edit(query,
+            f"📝 *PROMPT*\n\n{prompts[data]}\n\n_Ketik perintah di chat._",
+            InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
+            ]))
         return
 
     if data.startswith("buy_"):
         paket_nama = data.replace("buy_", "")
         paket = get_paket_list().get(paket_nama, {})
         harga = "GRATIS" if paket.get("harga") == 0 else f"Rp {paket.get('harga', 0):,}".replace(",", ".")
-        caption = (
+        await safe_edit(query,
             header("BELI PAKET", "💎") +
             f"📦 *{paket_nama.upper()}*\n"
-            f"⏱️ `{paket.get('durasi', '-')} hari`\n"
-            f"💰 *{harga}*\n"
-            f"🎯 `{paket.get('fitur', '-')}`\n\n"
-            "📞 *Hubungi owner:*\n"
-            f"💬 {owner_link()}"
-        )
-        await edit_caption(caption, InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"💬 Chat Owner @{OWNER_USERNAME}", url=f"https://t.me/{OWNER_USERNAME}")],
-            [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_paket")],
-        ]))
+            f"💰 *{harga}*\n\n"
+            f"📞 {owner_link()}",
+            InlineKeyboardMarkup([
+                [InlineKeyboardButton(f"💬 Chat Owner @{OWNER_USERNAME}", url=f"https://t.me/{OWNER_USERNAME}")],
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_paket")],
+            ]))
         return
 
 
-# ================== OWNER COMMANDS ==================
+# ================== OWNER CMD (versi ringkas) ==================
 
 async def adduser_cmd(update, context):
     uid = update.effective_user.id
-    if not is_owner_uid(uid):
-        await update.message.reply_text("❌ Command ini hanya untuk owner.")
-        return
-    args = context.args
-    if len(args) < 3:
-        await update.message.reply_text(
-            "❌ Format: `/adduser <id> <nama> <paket>`\n"
-            "Paket: trial / basic / premium / pro / lifetime",
-            parse_mode="Markdown"
-        )
-        return
-    try:
-        target_id = int(args[0])
-    except:
-        await update.message.reply_text("❌ ID harus angka.")
-        return
-    ok, msg = add_user(target_id, args[1], args[2].lower())
+    if not is_owner_uid(uid): return
+    if len(context.args) < 3:
+        await update.message.reply_text("❌ `/adduser <id> <nama> <paket>`", parse_mode="Markdown"); return
+    try: target_id = int(context.args[0])
+    except: await update.message.reply_text("❌ ID angka"); return
+    ok, msg = add_user(target_id, context.args[1], context.args[2].lower())
     await update.message.reply_text(f"{'✅' if ok else '❌'} {msg}")
-
 
 async def removeuser_cmd(update, context):
     uid = update.effective_user.id
-    if not is_owner_uid(uid):
-        await update.message.reply_text("❌ Hanya owner.")
-        return
-    if not context.args:
-        await update.message.reply_text("❌ Format: `/removeuser <id>`", parse_mode="Markdown")
-        return
-    try:
-        target_id = int(context.args[0])
-    except:
-        await update.message.reply_text("❌ ID harus angka.")
-        return
+    if not is_owner_uid(uid): return
+    if not context.args: await update.message.reply_text("❌ `/removeuser <id>`", parse_mode="Markdown"); return
+    try: target_id = int(context.args[0])
+    except: return
     ok, msg = remove_user(target_id)
     await update.message.reply_text(f"{'✅' if ok else '❌'} {msg}")
 
-
 async def extend_cmd(update, context):
     uid = update.effective_user.id
-    if not is_owner_uid(uid):
-        await update.message.reply_text("❌ Hanya owner.")
-        return
-    if len(context.args) < 2:
-        await update.message.reply_text("❌ Format: `/extend <id> <hari>`", parse_mode="Markdown")
-        return
-    try:
-        target_id = int(context.args[0])
-        hari = int(context.args[1])
-    except:
-        await update.message.reply_text("❌ ID dan hari harus angka.")
-        return
+    if not is_owner_uid(uid): return
+    if len(context.args) < 2: await update.message.reply_text("❌ `/extend <id> <hari>`", parse_mode="Markdown"); return
+    try: target_id = int(context.args[0]); hari = int(context.args[1])
+    except: return
     ok, msg = extend_user(target_id, hari)
     await update.message.reply_text(f"{'✅' if ok else '❌'} {msg}")
 
-
 async def ban_cmd(update, context):
     uid = update.effective_user.id
-    if not is_owner_uid(uid):
-        await update.message.reply_text("❌ Hanya owner.")
-        return
-    if not context.args:
-        await update.message.reply_text("❌ Format: `/ban <id>`", parse_mode="Markdown")
-        return
-    try:
-        target_id = int(context.args[0])
-    except:
-        await update.message.reply_text("❌ ID harus angka.")
-        return
+    if not is_owner_uid(uid): return
+    if not context.args: return
+    try: target_id = int(context.args[0])
+    except: return
     ok, msg = ban_user(target_id)
     await update.message.reply_text(f"{'✅' if ok else '❌'} {msg}")
 
-
 async def unban_cmd(update, context):
     uid = update.effective_user.id
-    if not is_owner_uid(uid):
-        await update.message.reply_text("❌ Hanya owner.")
-        return
-    if not context.args:
-        await update.message.reply_text("❌ Format: `/unban <id>`", parse_mode="Markdown")
-        return
-    try:
-        target_id = int(context.args[0])
-    except:
-        await update.message.reply_text("❌ ID harus angka.")
-        return
+    if not is_owner_uid(uid): return
+    if not context.args: return
+    try: target_id = int(context.args[0])
+    except: return
     ok, msg = unban_user(target_id)
     await update.message.reply_text(f"{'✅' if ok else '❌'} {msg}")
 
-
 async def listuser_cmd(update, context):
     uid = update.effective_user.id
-    if not is_owner_uid(uid):
-        await update.message.reply_text("❌ Hanya owner.")
-        return
+    if not is_owner_uid(uid): return
     users = list_users()
-    if not users:
-        await update.message.reply_text("📭 Belum ada user.")
-        return
-    text = "╔══════════════════════╗\n║  👥 *USER LIST*       ║\n╚══════════════════════╝\n\n"
+    if not users: await update.message.reply_text("📭 Kosong"); return
+    text = "👥 *USER LIST*\n\n"
     for id_str, u in users.items():
         hari = sisa_hari(int(id_str))
         emoji = "🚫" if u["status"] == "banned" else ("🟢" if hari > 0 else "🔴")
-        text += f"{emoji} *{u['nama']}* — {u['paket']} — {hari}h\n   🆔 `{id_str}`\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-    if len(text) > 4000:
-        text = text[:4000] + "\n..."
+        text += f"{emoji} *{u['nama']}* — {u['paket']} — {hari}h — `{id_str}`\n"
+    if len(text) > 4000: text = text[:4000] + "..."
     await update.message.reply_text(text, parse_mode="Markdown")
-
 
 async def userinfo_cmd(update, context):
     uid = update.effective_user.id
-    if not is_owner_uid(uid):
-        await update.message.reply_text("❌ Hanya owner.")
-        return
-    if not context.args:
-        await update.message.reply_text("❌ Format: `/userinfo <id>`", parse_mode="Markdown")
-        return
-    try:
-        target_id = int(context.args[0])
-    except:
-        await update.message.reply_text("❌ ID harus angka.")
-        return
+    if not is_owner_uid(uid): return
+    if not context.args: return
+    try: target_id = int(context.args[0])
+    except: return
     user = get_user(target_id)
-    if not user:
-        await update.message.reply_text("❌ User tidak ditemukan.")
-        return
+    if not user: await update.message.reply_text("❌ Gak ada"); return
     hari = sisa_hari(target_id)
-    text = (
-        "╔══════════════════════╗\n"
-        "║  👤 *USER INFO*      ║\n"
-        "╚══════════════════════╝\n\n"
-        f"🆔 `{user['id']}`\n"
-        f"📛 *{user['nama']}*\n"
+    await update.message.reply_text(
+        f"👤 *{user['nama']}*\n"
+        f"🆔 `{target_id}`\n"
         f"📦 `{user['paket'].upper()}`\n"
         f"⏳ *{hari} hari*\n"
-        f"🚦 `{user['status'].upper()}`\n"
-    )
-    await update.message.reply_text(text, parse_mode="Markdown")
-
+        f"🚦 `{user['status'].upper()}`",
+        parse_mode="Markdown")
 
 async def setowner_cmd(update, context):
     uid = update.effective_user.id
-    if get_owner_id() != 0 and not is_owner_uid(uid):
-        await update.message.reply_text("❌ Hanya owner.")
-        return
-    if not context.args:
-        await update.message.reply_text("❌ Format: `/setowner <id>`", parse_mode="Markdown")
-        return
-    try:
-        new_owner = int(context.args[0])
-    except:
-        await update.message.reply_text("❌ ID harus angka.")
-        return
+    if get_owner_id() != 0 and not is_owner_uid(uid): return
+    if not context.args: return
+    try: new_owner = int(context.args[0])
+    except: return
     set_owner_id(new_owner)
     await update.message.reply_text(f"✅ Owner baru: `{new_owner}`", parse_mode="Markdown")
 
@@ -936,74 +819,36 @@ async def myref_cmd(update, context):
     else:
         status, pesan = cek_akses(uid)
         if status in ("unregistered", "banned", "expired"):
-            await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-            return
+            await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
         stats = get_ref_stats(uid)
-        if not stats:
-            await update.message.reply_text("❌ Kamu belum terdaftar.")
-            return
-    text = (
-        "╔══════════════════════╗\n"
-        "║  🎁 *REFERRAL*        ║\n"
-        "╚══════════════════════╝\n\n"
-        f"🎫 *Kode Kamu*: `{stats['code']}`\n\n"
-        f"📊 Total: *{stats['count']}*\n"
-        f"🎁 Bonus: *+7 hari*\n"
-    )
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=owner_button())
-
+        if not stats: return
+    await update.message.reply_text(
+        f"🎁 *REFERRAL*\n\n🎫 `{stats['code']}`\n📊 Total: *{stats['count']}*",
+        parse_mode="Markdown", reply_markup=owner_button())
 
 async def topref_cmd(update, context):
-    uid = update.effective_user.id
-    if not is_owner_uid(uid):
-        status, pesan = cek_akses(uid)
-        if status in ("unregistered", "banned", "expired"):
-            await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-            return
     top = get_top_referrers(10)
-    if not top:
-        await update.message.reply_text("📭 Belum ada referral.")
-        return
-    text = "╔══════════════════════╗\n║  🏆 *TOP REFERRERS*   ║\n╚══════════════════════╝\n\n"
-    for i, (uid_str, user) in enumerate(top, 1):
+    if not top: await update.message.reply_text("📭 Kosong"); return
+    text = "🏆 *TOP REFERRERS*\n\n"
+    for i, (_, user) in enumerate(top, 1):
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f" {i}."
         text += f"{medal} *{user['nama']}* — {user['ref_count']} ref\n"
     await update.message.reply_text(text, parse_mode="Markdown")
 
-
 async def register_cmd(update, context):
     uid = update.effective_user.id
     if is_owner_uid(uid):
-        await update.message.reply_text("👑 Kamu owner.")
-        return
+        await update.message.reply_text("👑 Kamu owner."); return
     if is_registered(uid):
-        await update.message.reply_text("✅ Kamu sudah terdaftar.")
-        return
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text(
-            "❌ Format: `/register <nama>` atau `/register <nama> <kode_ref>`",
-            parse_mode="Markdown"
-        )
-        return
-    nama = args[0]
-    ref_code = args[1] if len(args) > 1 else None
-    referred_by = None
-    if ref_code:
-        referred_by = get_ref_by_code(ref_code)
-        if not referred_by:
-            await update.message.reply_text(
-                f"⚠️ Kode `{ref_code}` tidak valid.",
-                parse_mode="Markdown"
-            )
-            return
+        await update.message.reply_text("✅ Sudah terdaftar."); return
+    if not context.args:
+        await update.message.reply_text("❌ `/register <nama> [kode_ref]`", parse_mode="Markdown"); return
+    nama = context.args[0]
+    ref_code = context.args[1] if len(context.args) > 1 else None
+    referred_by = get_ref_by_code(ref_code) if ref_code else None
     ok, msg = add_user(uid, nama, "trial", hari=0, referred_by=referred_by)
     if ok:
-        await update.message.reply_text(
-            f"✅ Terdaftar sebagai *{nama}*\n\n"
-            f"Hubungi owner: {owner_link()}",
-            parse_mode="Markdown", reply_markup=owner_button()
-        )
+        await update.message.reply_text(f"✅ Terdaftar sebagai *{nama}*", parse_mode="Markdown", reply_markup=owner_button())
     else:
         await update.message.reply_text(f"❌ {msg}")
 
@@ -1013,55 +858,32 @@ async def register_cmd(update, context):
 async def cek_expired_job(context):
     try:
         for uid, user in get_users_expiring(3):
-            if is_notified(uid, "h3"):
-                continue
+            if is_notified(uid, "h3"): continue
             try:
-                await context.bot.send_message(
-                    chat_id=int(uid),
-                    text=f"⏰ Halo *{user['nama']}*, langganan expired 3 hari lagi. {owner_link()}",
-                    parse_mode="Markdown", reply_markup=owner_button()
-                )
+                await context.bot.send_message(int(uid), f"⏰ *{user['nama']}*, expired 3 hari lagi. {owner_link()}", parse_mode="Markdown", reply_markup=owner_button())
                 mark_notified(uid, "h3")
-            except Exception as e:
-                logger.error(f"Notif H-3 ke {uid}: {e}")
-
+            except: pass
         for uid, user in get_users_expiring(1):
-            if is_notified(uid, "h1"):
-                continue
+            if is_notified(uid, "h1"): continue
             try:
-                await context.bot.send_message(
-                    chat_id=int(uid),
-                    text=f"⚠️ Halo *{user['nama']}*, langganan expired BESOK. {owner_link()}",
-                    parse_mode="Markdown", reply_markup=owner_button()
-                )
+                await context.bot.send_message(int(uid), f"⚠️ *{user['nama']}*, expired BESOK.", parse_mode="Markdown", reply_markup=owner_button())
                 mark_notified(uid, "h1")
-            except Exception as e:
-                logger.error(f"Notif H-1 ke {uid}: {e}")
-
+            except: pass
         for uid, user in get_users_expired_today():
-            if is_notified(uid, "exp"):
-                continue
+            if is_notified(uid, "exp"): continue
             try:
-                await context.bot.send_message(
-                    chat_id=int(uid),
-                    text=f"🔴 Halo *{user['nama']}*, langganan sudah EXPIRED. {owner_link()}",
-                    parse_mode="Markdown", reply_markup=owner_button()
-                )
+                await context.bot.send_message(int(uid), f"🔴 *{user['nama']}*, sudah EXPIRED.", parse_mode="Markdown", reply_markup=owner_button())
                 mark_notified(uid, "exp")
-            except Exception as e:
-                logger.error(f"Notif expired ke {uid}: {e}")
+            except: pass
     except Exception as e:
-        logger.error(f"Error cek_expired_job: {e}")
-
+        logger.error(f"cek_expired_job: {e}")
 
 async def cekexpired_cmd(update, context):
     uid = update.effective_user.id
-    if not is_owner_uid(uid):
-        await update.message.reply_text("❌ Hanya owner.")
-        return
-    msg = await update.message.reply_text("🔄 Cek user expired...")
+    if not is_owner_uid(uid): return
+    msg = await update.message.reply_text("🔄 Cek...")
     await cek_expired_job(context)
-    await msg.edit_text("✅ Selesai cek expired.")
+    await msg.edit_text("✅ Selesai.")
 
 
 # ================== RECON ==================
@@ -1070,13 +892,11 @@ async def dns_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     domain = get_arg(context)
     if not domain or not is_valid_domain(domain):
-        await update.message.reply_text("❌ Format: `/dns example.com`", parse_mode="Markdown")
-        return
-    msg = await update.message.reply_text(f"🔍 DNS enum `{domain}`...", parse_mode="Markdown")
+        await update.message.reply_text("❌ `/dns example.com`", parse_mode="Markdown"); return
+    msg = await update.message.reply_text(f"🔍 DNS `{domain}`...")
     try:
         records = await asyncio.to_thread(dns_enum, domain)
         text = f"🌐 *DNS: {domain}*\n\n"
@@ -1087,244 +907,177 @@ async def dns_cmd(update, context):
                     text += f"  `{v}`\n"
         await msg.edit_text(text[:4000], parse_mode="Markdown")
     except Exception as e:
-        await msg.edit_text(f"❌ Error: {e}")
-
+        await msg.edit_text(f"❌ {e}")
 
 async def sub_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     domain = get_arg(context)
-    if not domain or not is_valid_domain(domain):
-        await update.message.reply_text("❌ Format: `/sub example.com`", parse_mode="Markdown")
-        return
-    msg = await update.message.reply_text(f"🔍 Subdomain scan `{domain}`...", parse_mode="Markdown")
+    if not domain: await update.message.reply_text("❌ `/sub example.com`", parse_mode="Markdown"); return
+    msg = await update.message.reply_text(f"🔍 Subdomain `{domain}`...")
     try:
         subs = await asyncio.to_thread(subdomain_scan, domain)
-        if not subs:
-            await msg.edit_text("❌ Tidak ada subdomain ditemukan")
-            return
+        if not subs: await msg.edit_text("❌ Kosong"); return
         text = f"🌐 *Subdomains: {domain}* ({len(subs)})\n\n"
-        for s in subs[:40]:
-            text += f"• `{s['subdomain']}` → `{s['ip']}`\n"
+        for s in subs[:40]: text += f"• `{s['subdomain']}` → `{s['ip']}`\n"
         await msg.edit_text(text[:4000], parse_mode="Markdown")
     except Exception as e:
-        await msg.edit_text(f"❌ Error: {e}")
-
+        await msg.edit_text(f"❌ {e}")
 
 async def whois_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     domain = get_arg(context)
-    if not domain:
-        await update.message.reply_text("❌ Format: `/whois example.com`", parse_mode="Markdown")
-        return
-    msg = await update.message.reply_text(f"🔍 WHOIS `{domain}`...", parse_mode="Markdown")
+    if not domain: return
+    msg = await update.message.reply_text(f"🔍 WHOIS `{domain}`...")
     try:
         result = await asyncio.to_thread(whois_lookup, domain)
         if isinstance(result, dict) and "error" in result:
-            await msg.edit_text(f"❌ {result['error']}")
-            return
+            await msg.edit_text(f"❌ {result['error']}"); return
         await msg.edit_text(f"📋 *WHOIS: {domain}*\n\n`{result[:3500]}`", parse_mode="Markdown")
     except Exception as e:
-        await msg.edit_text(f"❌ Error: {e}")
-
+        await msg.edit_text(f"❌ {e}")
 
 async def ip_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     target = get_arg(context)
-    if not target:
-        await update.message.reply_text("❌ Format: `/ip 8.8.8.8`", parse_mode="Markdown")
-        return
+    if not target: return
     try:
         ip = target if target.replace(".", "").isdigit() else await asyncio.to_thread(resolve_domain, target)
-        if not ip:
-            await update.message.reply_text(f"❌ Tidak bisa resolve `{target}`")
-            return
-        msg = await update.message.reply_text(f"🔍 IP info `{ip}`...", parse_mode="Markdown")
+        if not ip: await update.message.reply_text("❌ Gagal resolve"); return
+        msg = await update.message.reply_text(f"🔍 IP `{ip}`...")
         info = await asyncio.to_thread(ip_info, ip)
-        if "error" in info:
-            await msg.edit_text(f"❌ {info['error']}")
-            return
-        text = f"🌍 *IP Info: {info['IP']}*\n\n"
+        if "error" in info: await msg.edit_text(f"❌ {info['error']}"); return
+        text = f"🌍 *IP: {info['IP']}*\n\n"
         for k, v in info.items():
-            if k != "IP":
-                text += f"*{k}:* `{v}`\n"
+            if k != "IP": text += f"*{k}:* `{v}`\n"
         await msg.edit_text(text, parse_mode="Markdown")
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
-
+        await update.message.reply_text(f"❌ {e}")
 
 async def ssl_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     domain = get_arg(context)
-    if not domain:
-        await update.message.reply_text("❌ Format: `/ssl example.com`", parse_mode="Markdown")
-        return
-    msg = await update.message.reply_text(f"🔍 SSL check `{domain}`...", parse_mode="Markdown")
+    if not domain: return
+    msg = await update.message.reply_text(f"🔍 SSL `{domain}`...")
     try:
         info = await asyncio.to_thread(ssl_info, domain)
-        if "error" in info:
-            await msg.edit_text(f"❌ {info['error']}")
-            return
+        if "error" in info: await msg.edit_text(f"❌ {info['error']}"); return
         text = f"🔒 *SSL: {domain}*\n\n"
-        for k, v in info.items():
-            text += f"*{k}:* `{v}`\n"
+        for k, v in info.items(): text += f"*{k}:* `{v}`\n"
         await msg.edit_text(text[:4000], parse_mode="Markdown")
     except Exception as e:
-        await msg.edit_text(f"❌ Error: {e}")
-
+        await msg.edit_text(f"❌ {e}")
 
 async def tech_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     url = get_arg(context)
-    if not url:
-        await update.message.reply_text("❌ Format: `/tech https://example.com`", parse_mode="Markdown")
-        return
+    if not url: return
     url = normalize_url(url)
-    msg = await update.message.reply_text(f"🔍 Tech detect `{url}`...", parse_mode="Markdown")
+    msg = await update.message.reply_text(f"🔍 Tech `{url}`...")
     try:
         tech = await asyncio.to_thread(tech_detect, url)
-        text = f"🔧 *Technologies: {url}*\n\n"
+        text = f"🔧 *Tech: {url}*\n\n"
         if tech:
-            for t in tech:
-                text += f"• `{t}`\n"
-        else:
-            text += "_Tidak terdeteksi_"
+            for t in tech: text += f"• `{t}`\n"
+        else: text += "_Kosong_"
         await msg.edit_text(text, parse_mode="Markdown")
     except Exception as e:
-        await msg.edit_text(f"❌ Error: {e}")
-
+        await msg.edit_text(f"❌ {e}")
 
 async def waf_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     url = get_arg(context)
-    if not url:
-        await update.message.reply_text("❌ Format: `/waf https://example.com`", parse_mode="Markdown")
-        return
+    if not url: return
     url = normalize_url(url)
-    msg = await update.message.reply_text(f"🔍 WAF detect `{url}`...", parse_mode="Markdown")
+    msg = await update.message.reply_text(f"🔍 WAF `{url}`...")
     try:
         wafs = await asyncio.to_thread(waf_detect, url)
         text = f"🛡️ *WAF: {url}*\n\n"
         if wafs:
-            for w in wafs:
-                text += f"• `{w}`\n"
-        else:
-            text += "_Tidak terdeteksi WAF_"
+            for w in wafs: text += f"• `{w}`\n"
+        else: text += "_Kosong_"
         await msg.edit_text(text, parse_mode="Markdown")
     except Exception as e:
-        await msg.edit_text(f"❌ Error: {e}")
-
+        await msg.edit_text(f"❌ {e}")
 
 async def shodan_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     ip = get_arg(context)
-    if not ip:
-        await update.message.reply_text("❌ Format: `/shodan 8.8.8.8`", parse_mode="Markdown")
-        return
-    if not SHODAN_KEY:
-        await update.message.reply_text("❌ Shodan API key belum di-set")
-        return
-    msg = await update.message.reply_text(f"🔍 Shodan `{ip}`...", parse_mode="Markdown")
+    if not ip or not SHODAN_KEY: return
+    msg = await update.message.reply_text(f"🔍 Shodan `{ip}`...")
     try:
         info = await asyncio.to_thread(shodan_lookup, ip, SHODAN_KEY)
-        if "error" in info:
-            await msg.edit_text(f"❌ {info['error']}")
-            return
-        text = f"🔎 *Shodan: {info['IP']}*\n\n"
-        text += f"*Org:* `{info.get('Org')}`\n"
-        text += f"*OS:* `{info.get('OS')}`\n"
-        text += f"*Ports:* `{info.get('Ports')}`\n"
-        await msg.edit_text(text[:4000], parse_mode="Markdown")
+        if "error" in info: await msg.edit_text(f"❌ {info['error']}"); return
+        await msg.edit_text(f"🔎 *Shodan: {info['IP']}*\n\nOrg: `{info.get('Org')}`\nPorts: `{info.get('Ports')}`", parse_mode="Markdown")
     except Exception as e:
-        await msg.edit_text(f"❌ Error: {e}")
-
+        await msg.edit_text(f"❌ {e}")
 
 async def dork_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     domain = get_arg(context)
-    if not domain:
-        await update.message.reply_text("❌ Format: `/dork example.com`", parse_mode="Markdown")
-        return
+    if not domain: return
     dorks = dork_search(domain)
-    text = f"🔍 *Google Dorks: {domain}*\n\n"
-    for d in dorks:
-        text += f"`{d}`\n"
+    text = f"🔍 *Dorks: {domain}*\n\n"
+    for d in dorks: text += f"`{d}`\n"
     await update.message.reply_text(text, parse_mode="Markdown")
-
 
 async def axfr_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     domain = get_arg(context)
-    if not domain:
-        await update.message.reply_text("❌ Format: `/axfr example.com`", parse_mode="Markdown")
-        return
-    msg = await update.message.reply_text(f"🔍 Zone transfer `{domain}`...", parse_mode="Markdown")
+    if not domain: return
+    msg = await update.message.reply_text(f"🔍 AXFR `{domain}`...")
     try:
         records = await asyncio.to_thread(zone_transfer, domain)
         if records:
             text = "⚠️ *ZONE TRANSFER BERHASIL!*\n\n"
-            for r in records[:50]:
-                text += f"`{r}`\n"
+            for r in records[:50]: text += f"`{r}`\n"
             await msg.edit_text(text, parse_mode="Markdown")
         else:
-            await msg.edit_text("✅ Zone transfer gagal (dilindungi)")
+            await msg.edit_text("✅ Gagal (dilindungi)")
     except Exception as e:
-        await msg.edit_text(f"❌ Error: {e}")
-
+        await msg.edit_text(f"❌ {e}")
 
 async def rev_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     ip = get_arg(context)
-    if not ip:
-        await update.message.reply_text("❌ Format: `/rev 8.8.8.8`", parse_mode="Markdown")
-        return
+    if not ip: return
     try:
         result = await asyncio.to_thread(reverse_dns, ip)
         if result:
-            await update.message.reply_text(f"🔍 *Reverse DNS {ip}:*\n\n`{result}`", parse_mode="Markdown")
+            await update.message.reply_text(f"🔍 *Rev DNS {ip}:*\n\n`{result}`", parse_mode="Markdown")
         else:
-            await update.message.reply_text(f"❌ Tidak ada PTR record untuk `{ip}`")
+            await update.message.reply_text(f"❌ Tidak ada PTR untuk `{ip}`")
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
+        await update.message.reply_text(f"❌ {e}")
 
 
 # ================== VULN ==================
@@ -1333,177 +1086,106 @@ async def scan_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     if not is_owner_uid(uid):
         user = get_user(uid)
         if user and user["fitur"] == "recon":
-            await update.message.reply_text(
-                "🔒 Paket BASIC hanya Recon. Upgrade ke PREMIUM.",
-                parse_mode="Markdown", reply_markup=owner_button()
-            )
-            return
+            await update.message.reply_text("🔒 Basic hanya Recon.", reply_markup=owner_button()); return
     target = get_arg(context)
-    if not target:
-        await update.message.reply_text("❌ Format: `/scan example.com`", parse_mode="Markdown")
-        return
+    if not target: await update.message.reply_text("❌ `/scan example.com`", parse_mode="Markdown"); return
     url = normalize_url(target)
     domain = urlparse(url).hostname
-    if not is_valid_domain(domain):
-        await update.message.reply_text("❌ Domain tidak valid")
-        return
-    if not resolve_domain(domain):
-        await update.message.reply_text("❌ Domain tidak bisa di-resolve")
-        return
-    msg = await update.message.reply_text(
-        f"🔍 *Full scan* `{domain}`...\n\n⏳ 1-3 menit.", parse_mode="Markdown"
-    )
+    if not is_valid_domain(domain) or not resolve_domain(domain):
+        await update.message.reply_text("❌ Domain invalid"); return
+    msg = await update.message.reply_text(f"🔍 Scan `{domain}`... (1-3 mnt)")
     try:
         scanner = VulnScanner(target)
         result = await asyncio.to_thread(scanner.run)
     except Exception as e:
-        await msg.edit_text(f"❌ Error: {e}")
-        return
-    if "error" in result:
-        await msg.edit_text(f"❌ {result['error']}")
-        return
+        await msg.edit_text(f"❌ {e}"); return
+    if "error" in result: await msg.edit_text(f"❌ {result['error']}"); return
     findings = result["findings"]
-    text = f"✅ *SCAN SELESAI*\n\n"
-    text += f"🌐 `{result['domain']}`\n"
-    text += f"📡 `{result['ip']}`\n"
-    text += f"⏰ `{result['time']}`\n\n"
+    text = f"✅ *SCAN SELESAI*\n\n🌐 `{result['domain']}`\n📡 `{result['ip']}`\n⏰ `{result['time']}`\n\n"
     if findings:
-        text += summary_text(findings) + "\n"
-        text += fmt_findings(findings, 10)
+        text += summary_text(findings) + "\n" + fmt_findings(findings, 10)
     else:
-        text += "✅ _Tidak ada kerentanan ditemukan_\n"
-    if len(text) > 4000:
-        text = text[:4000] + "\n\n... (lihat file report)"
+        text += "✅ _Tidak ada kerentanan_"
+    if len(text) > 4000: text = text[:4000] + "\n..."
     await msg.edit_text(text, parse_mode="Markdown")
     try:
-        json_file = save_json_report(result)
-        html_file = save_html_report(result)
+        json_file = save_json_report(result); html_file = save_html_report(result)
         with open(json_file, "rb") as f:
-            await update.message.reply_document(
-                document=f, filename=os.path.basename(json_file),
-                caption=f"📄 JSON Report - {result['domain']}"
-            )
+            await update.message.reply_document(document=f, filename=os.path.basename(json_file), caption=f"📄 JSON - {result['domain']}")
         with open(html_file, "rb") as f:
-            await update.message.reply_document(
-                document=f, filename=os.path.basename(html_file),
-                caption=f"🌐 HTML Report - {result['domain']}"
-            )
+            await update.message.reply_document(document=f, filename=os.path.basename(html_file), caption=f"🌐 HTML - {result['domain']}")
     except Exception as e:
-        logger.error(f"Report error: {e}")
-
+        logger.error(f"Report: {e}")
 
 async def _quick_vuln(update, context, test_name, test_func):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     if not is_owner_uid(uid):
         user = get_user(uid)
         if user and user["fitur"] == "recon":
-            await update.message.reply_text(
-                "🔒 Paket BASIC hanya Recon.",
-                parse_mode="Markdown", reply_markup=owner_button()
-            )
-            return
+            await update.message.reply_text("🔒 Basic hanya Recon."); return
     url = get_arg(context)
-    if not url:
-        await update.message.reply_text(f"❌ Format: `/{test_name} <url>`", parse_mode="Markdown")
-        return
+    if not url: await update.message.reply_text(f"❌ `/{test_name} <url>`", parse_mode="Markdown"); return
     url = normalize_url(url)
-    msg = await update.message.reply_text(f"🔍 Test {test_name} `{url}`...", parse_mode="Markdown")
+    msg = await update.message.reply_text(f"🔍 Test {test_name} `{url}`...")
     try:
         scanner = VulnScanner(url)
         await asyncio.to_thread(scanner.crawl, url, 1)
-        if not scanner.params:
-            await msg.edit_text("❌ Tidak ada parameter ditemukan")
-            return
+        if not scanner.params: await msg.edit_text("❌ Gak ada parameter"); return
         await asyncio.to_thread(test_func, scanner)
-        if not scanner.findings:
-            await msg.edit_text(f"✅ Tidak ada {test_name} ditemukan")
-            return
-        text = f"⚠️ *{test_name.upper()} DITEMUKAN!*\n\n"
-        text += fmt_findings(scanner.findings, 10)
+        if not scanner.findings: await msg.edit_text(f"✅ Gak ada {test_name}"); return
+        text = f"⚠️ *{test_name.upper()} DITEMUKAN!*\n\n" + fmt_findings(scanner.findings, 10)
         await msg.edit_text(text[:4000], parse_mode="Markdown")
     except Exception as e:
-        await msg.edit_text(f"❌ Error: {e}")
+        await msg.edit_text(f"❌ {e}")
 
-
-async def sqli_cmd(update, context):
-    await _quick_vuln(update, context, "sqli", lambda s: s.test_sqli())
-
-
-async def xss_cmd(update, context):
-    await _quick_vuln(update, context, "xss", lambda s: s.test_xss())
-
-
-async def lfi_cmd(update, context):
-    await _quick_vuln(update, context, "lfi", lambda s: s.test_lfi())
-
-
-async def ssrf_cmd(update, context):
-    await _quick_vuln(update, context, "ssrf", lambda s: s.test_ssrf())
-
-
-async def redirect_cmd(update, context):
-    await _quick_vuln(update, context, "open redirect", lambda s: s.test_open_redirect())
-
-
-async def methods_cmd(update, context):
-    await _quick_vuln(update, context, "http methods", lambda s: s.test_http_methods())
-
+async def sqli_cmd(update, context): await _quick_vuln(update, context, "sqli", lambda s: s.test_sqli())
+async def xss_cmd(update, context): await _quick_vuln(update, context, "xss", lambda s: s.test_xss())
+async def lfi_cmd(update, context): await _quick_vuln(update, context, "lfi", lambda s: s.test_lfi())
+async def ssrf_cmd(update, context): await _quick_vuln(update, context, "ssrf", lambda s: s.test_ssrf())
+async def redirect_cmd(update, context): await _quick_vuln(update, context, "open redirect", lambda s: s.test_open_redirect())
+async def methods_cmd(update, context): await _quick_vuln(update, context, "http methods", lambda s: s.test_http_methods())
 
 async def cors_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     url = get_arg(context)
-    if not url:
-        await update.message.reply_text("❌ Format: `/cors <url>`", parse_mode="Markdown")
-        return
+    if not url: return
     url = normalize_url(url)
     try:
         results = await asyncio.to_thread(cors_check, url)
-        if not results:
-            await update.message.reply_text("✅ Tidak ada misconfig CORS")
-            return
+        if not results: await update.message.reply_text("✅ Gak ada misconfig"); return
         text = "⚠️ *CORS Misconfig!*\n\n"
-        for r in results:
-            text += f"• Severity: `{r['severity']}`\n• ACAO: `{r['acao']}`\n"
+        for r in results: text += f"• `{r['severity']}` — `{r['acao']}`\n"
         await update.message.reply_text(text, parse_mode="Markdown")
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
-
+        await update.message.reply_text(f"❌ {e}")
 
 async def dir_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     url = get_arg(context)
-    if not url:
-        await update.message.reply_text("❌ Format: `/dir <url>`", parse_mode="Markdown")
-        return
+    if not url: return
     url = normalize_url(url)
-    msg = await update.message.reply_text(f"🔍 Dir bruteforce `{url}`...", parse_mode="Markdown")
+    msg = await update.message.reply_text(f"🔍 Dir `{url}`...")
     try:
         scanner = VulnScanner(url)
         await asyncio.to_thread(scanner.dir_bruteforce)
-        if not scanner.findings:
-            await msg.edit_text("✅ Tidak ada directory ditemukan")
-            return
-        text = "📁 *Directories Found:*\n\n" + fmt_findings(scanner.findings, 30)
+        if not scanner.findings: await msg.edit_text("✅ Gak ada directory"); return
+        text = "📁 *Directories:*\n\n" + fmt_findings(scanner.findings, 30)
         await msg.edit_text(text[:4000], parse_mode="Markdown")
     except Exception as e:
-        await msg.edit_text(f"❌ Error: {e}")
+        await msg.edit_text(f"❌ {e}")
 
 
 # ================== TOOLS ==================
@@ -1512,70 +1194,52 @@ async def base64e_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     text = " ".join(context.args) if context.args else ""
-    if not text:
-        await update.message.reply_text("❌ Format: `/base64e hello`", parse_mode="Markdown")
-        return
+    if not text: return
     await update.message.reply_text(f"```\n{base64_encode(text)}\n```", parse_mode="Markdown")
-
 
 async def base64d_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     text = " ".join(context.args) if context.args else ""
-    if not text:
-        await update.message.reply_text("❌ Format: `/base64d aGVsbG8=`", parse_mode="Markdown")
-        return
+    if not text: return
     try:
         await update.message.reply_text(f"```\n{base64_decode(text)}\n```", parse_mode="Markdown")
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
-
+        await update.message.reply_text(f"❌ {e}")
 
 async def hash_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     text = " ".join(context.args) if context.args else ""
-    if not text:
-        await update.message.reply_text("❌ Format: `/hash hello`", parse_mode="Markdown")
-        return
-    msg = f"*Hashes:* `{text}`\n\n"
-    msg += f"*MD5:*\n`{hash_string(text, 'md5')}`\n\n"
-    msg += f"*SHA1:*\n`{hash_string(text, 'sha1')}`\n\n"
-    msg += f"*SHA256:*\n`{hash_string(text, 'sha256')}`"
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
+    if not text: return
+    await update.message.reply_text(
+        f"*MD5:* `{hash_string(text, 'md5')}`\n"
+        f"*SHA1:* `{hash_string(text, 'sha1')}`\n"
+        f"*SHA256:* `{hash_string(text, 'sha256')}`",
+        parse_mode="Markdown")
 
 async def jwt_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
-        return
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     token = get_arg(context)
-    if not token:
-        await update.message.reply_text("❌ Format: `/jwt <token>`", parse_mode="Markdown")
-        return
+    if not token: return
     parts = token.split(".")
-    if len(parts) != 3:
-        await update.message.reply_text("❌ Bukan JWT valid")
-        return
+    if len(parts) != 3: await update.message.reply_text("❌ Bukan JWT"); return
     try:
         header = json.loads(base64.urlsafe_b64decode(parts[0] + "=" * (4 - len(parts[0]) % 4)))
         payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=" * (4 - len(parts[1]) % 4)))
-        text = f"*JWT Decoded*\n\n*Header:*\n```\n{json.dumps(header, indent=2)}\n```\n"
-        text += f"\n*Payload:*\n```\n{json.dumps(payload, indent=2)}\n```"
+        text = f"*Header:*\n```\n{json.dumps(header, indent=2)}\n```\n*Payload:*\n```\n{json.dumps(payload, indent=2)}\n```"
         await update.message.reply_text(text, parse_mode="Markdown")
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
+        await update.message.reply_text(f"❌ {e}")
 
 
 # ================== HANDLER ==================
@@ -1588,17 +1252,12 @@ async def handle_text(update, context):
     else:
         await update.message.reply_text(f"❌ Ketik /start untuk menu {NAMA_BOT}.")
 
-
 async def error_handler(update, context):
     logger.error(f"Error: {context.error}")
 
-
-# ================== AUTO REFRESH PROXY ==================
-
 async def auto_refresh_proxy_job(context):
-    """Auto-refresh proxy tiap 12 jam."""
     try:
-        logger.info("[Auto] Refresh proxy dimulai...")
+        logger.info("[Auto] Refresh proxy...")
         loop = asyncio.get_event_loop()
         n = await loop.run_in_executor(None, refresh_proxy_file)
         logger.info(f"[Auto] Proxy refreshed: {n} hidup")
@@ -1610,21 +1269,18 @@ async def auto_refresh_proxy_job(context):
 
 def main():
     if not BOT_TOKEN:
-        print("❌ BOT_TOKEN belum di-set di environment")
-        return
+        print("❌ BOT_TOKEN belum di-set"); return
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Info & User
+    # Info
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("myaccount", myaccount_cmd))
     app.add_handler(CommandHandler("paket", paket_cmd))
     app.add_handler(CommandHandler("owner", owner_cmd))
-
     # Referral
     app.add_handler(CommandHandler("myref", myref_cmd))
     app.add_handler(CommandHandler("topref", topref_cmd))
     app.add_handler(CommandHandler("register", register_cmd))
-
     # Owner
     app.add_handler(CommandHandler("adduser", adduser_cmd))
     app.add_handler(CommandHandler("removeuser", removeuser_cmd))
@@ -1635,7 +1291,6 @@ def main():
     app.add_handler(CommandHandler("userinfo", userinfo_cmd))
     app.add_handler(CommandHandler("setowner", setowner_cmd))
     app.add_handler(CommandHandler("cekexpired", cekexpired_cmd))
-
     # Recon
     app.add_handler(CommandHandler("dns", dns_cmd))
     app.add_handler(CommandHandler("sub", sub_cmd))
@@ -1648,7 +1303,6 @@ def main():
     app.add_handler(CommandHandler("dork", dork_cmd))
     app.add_handler(CommandHandler("axfr", axfr_cmd))
     app.add_handler(CommandHandler("rev", rev_cmd))
-
     # Vuln
     app.add_handler(CommandHandler("scan", scan_cmd))
     app.add_handler(CommandHandler("sqli", sqli_cmd))
@@ -1659,51 +1313,34 @@ def main():
     app.add_handler(CommandHandler("cors", cors_cmd))
     app.add_handler(CommandHandler("methods", methods_cmd))
     app.add_handler(CommandHandler("dir", dir_cmd))
-
     # Tools
     app.add_handler(CommandHandler("base64e", base64e_cmd))
     app.add_handler(CommandHandler("base64d", base64d_cmd))
     app.add_handler(CommandHandler("hash", hash_cmd))
     app.add_handler(CommandHandler("jwt", jwt_cmd))
-
     # TikTok + Proxy
     app.add_handler(CommandHandler("ttcheck", ttcheck_cmd))
     app.add_handler(CommandHandler("scrapproxy", scrapoxy_cmd))
-
     # Callback & text
     app.add_handler(CallbackQueryHandler(menu_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
-    # File handler (owner only) - taruh di bawah text handler biar text tetap jalan
+    # File handler
     app.add_handler(MessageHandler(
-        filters.Document.FileExtension("txt") & filters.User(user_id=5728930563),
+        filters.Document.FileExtension("txt") & filters.User(user_id=OWNER_ID),
         handle_tt_file
     ))
-
     app.add_error_handler(error_handler)
 
-    # Job queue
     try:
-        job_queue = app.job_queue
-        # Cek expired harian jam 9 pagi
-        job_queue.run_daily(
-            cek_expired_job,
-            time=dt_mod.time(hour=9, minute=0),
-        )
-        # Auto-refresh proxy tiap 12 jam
-        job_queue.run_repeating(
-            auto_refresh_proxy_job,
-            interval=12 * 3600,  # 12 jam
-            first=60,            # mulai 60 detik setelah start
-        )
-        logger.info("Job queue: cek expired 09:00, refresh proxy tiap 12 jam")
+        jq = app.job_queue
+        jq.run_daily(cek_expired_job, time=dt_mod.time(hour=9, minute=0))
+        jq.run_repeating(auto_refresh_proxy_job, interval=12*3600, first=60)
+        logger.info("Job queue: expired 09:00, refresh proxy tiap 12 jam")
     except Exception as e:
-        logger.error(f"Gagal setup JobQueue: {e}")
+        logger.error(f"JobQueue: {e}")
 
     print("DiabloXhunt Private Edition running...")
-    print("Owner: Naddd")
-    print(f"Owner Username: @{OWNER_USERNAME}")
-
+    print(f"Owner ID: {OWNER_ID}")
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 
