@@ -1,0 +1,11 @@
+{
+  "owner_id": 0,
+  "paket": {
+    "trial": {"durasi": 3, "harga": 0, "fitur": "all"},
+    "basic": {"durasi": 30, "harga": 10000, "fitur": "recon"},
+    "premium": {"durasi": 30, "harga": 25000, "fitur": "all"},
+    "pro": {"durasi": 30, "harga": 50000, "fitur": "all_unlimited"},
+    "lifetime": {"durasi": 36500, "harga": 200000, "fitur": "all_unlimited"}
+  },
+  "users": {}
+}
