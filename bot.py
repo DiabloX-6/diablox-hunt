@@ -24,16 +24,6 @@ from modules.recon import (
 )
 from modules.vuln import VulnScanner
 from modules.report import save_json_report, save_html_report
-from modules.osint import (
-    email_check, phone_check, username_check, github_check,
-    telegram_check, domain_info, ip_full_info, mx_lookup,
-    subdomain_crtsh, robots_check, headers_check, my_ip,
-    virustotal_url_check, virustotal_ip_check,
-    hunter_domain_search, ipstack_check, abstract_email_check,
-    geoloc_ip, geoloc_ipstack, geocode_search, geocode_opencage,
-    reverse_geocode, reverse_geocode_opencage,
-    nearby_geoapify, route_geoapify, distance_calc,
-)
 from database import (
     is_owner, is_registered, is_active, get_user, add_user, remove_user,
     extend_user, ban_user, unban_user, list_users, sisa_hari,
@@ -48,7 +38,7 @@ SHODAN_KEY = os.getenv("SHODAN_API_KEY", "")
 NAMA_BOT = "DiabloXhunt"
 NAMA_OWNER = "Naddd"
 OWNER_USERNAME = "ZerooTwo2"
-VERSION = "2.3"
+VERSION = "2.5"
 BANNER_URL = os.getenv("BANNER_URL", "https://i.imgur.com/pp1gIFY.jpeg")
 # =================================================
 
@@ -151,11 +141,9 @@ def main_menu_keyboard(uid):
     if is_owner(uid):
         keyboard.append([InlineKeyboardButton("👑 Owner Panel", callback_data="menu_owner")])
     keyboard.extend([
-        [InlineKeyboardButton("🕵️ OSINT Tools", callback_data="menu_osint")],
         [InlineKeyboardButton("🔍 Recon Tools", callback_data="menu_recon")],
         [InlineKeyboardButton("💥 Vuln Scanner", callback_data="menu_vuln")],
         [InlineKeyboardButton("🧰 Tools & Utility", callback_data="menu_tools")],
-        [InlineKeyboardButton("📍 Geolocation", callback_data="menu_geo")],
         [
             InlineKeyboardButton("👤 Akun Saya", callback_data="menu_akun"),
             InlineKeyboardButton("💎 Paket", callback_data="menu_paket"),
@@ -163,33 +151,6 @@ def main_menu_keyboard(uid):
         [InlineKeyboardButton(f"💬 Chat Owner @{OWNER_USERNAME}", url=f"https://t.me/{OWNER_USERNAME}")],
     ])
     return InlineKeyboardMarkup(keyboard)
-
-
-def osint_menu_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📧 Email", callback_data="osint_email"),
-            InlineKeyboardButton("📱 Phone", callback_data="osint_phone"),
-        ],
-        [
-            InlineKeyboardButton("👤 Username", callback_data="osint_username"),
-            InlineKeyboardButton("🐙 GitHub", callback_data="osint_github"),
-        ],
-        [
-            InlineKeyboardButton("✈️ Telegram", callback_data="osint_telegram"),
-            InlineKeyboardButton("📡 IP Info", callback_data="osint_ipinfo"),
-        ],
-        [
-            InlineKeyboardButton("📬 MX Check", callback_data="osint_mx"),
-            InlineKeyboardButton("🔍 Subdomain", callback_data="osint_subdomain"),
-        ],
-        [
-            InlineKeyboardButton("🤖 Robots.txt", callback_data="osint_robots"),
-            InlineKeyboardButton("🛡️ Headers", callback_data="osint_headers"),
-        ],
-        [InlineKeyboardButton("🌐 My IP", callback_data="osint_myip")],
-        [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
-    ])
 
 
 def recon_menu_keyboard():
@@ -256,24 +217,6 @@ def tools_menu_keyboard():
     ])
 
 
-def geo_menu_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📍 Geoloc IP", callback_data="geo_geoloc2"),
-            InlineKeyboardButton("🗺️ Geocode", callback_data="geo_geocode"),
-        ],
-        [
-            InlineKeyboardButton("🔄 Reverse Geo", callback_data="geo_revgeo"),
-            InlineKeyboardButton("🏪 Nearby", callback_data="geo_nearby"),
-        ],
-        [
-            InlineKeyboardButton("🚗 Route", callback_data="geo_route"),
-            InlineKeyboardButton("📏 Distance", callback_data="geo_distance"),
-        ],
-        [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
-    ])
-
-
 def owner_menu_keyboard():
     return InlineKeyboardMarkup([
         [
@@ -311,6 +254,69 @@ def paket_keyboard():
         [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
     ])
     
+
+# ================== INFO & USER COMMANDS ==================
+
+async def myaccount_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if is_owner(uid):
+        await update.message.reply_text("👑 Kamu owner. Ketik /start")
+        return
+    if not is_registered(uid):
+        await update.message.reply_text("❌ Belum terdaftar. Ketik `/register <nama>`", parse_mode="Markdown")
+        return
+    user = get_user(uid)
+    hari = sisa_hari(uid)
+    text = (
+        "╔══════════════════════╗\n"
+        "║  👤 *AKUN SAYA*       ║\n"
+        "╚══════════════════════╝\n\n"
+        f"🆔 ID       : `{user['id']}`\n"
+        f"📛 Nama     : *{user['nama']}*\n"
+        f"📦 Paket    : `{user['paket'].upper()}`\n"
+        f"🎯 Fitur    : `{user['fitur']}`\n"
+        f"📅 Mulai    : `{user['start']}`\n"
+        f"⏰ Expired  : `{user['expired']}`\n"
+        f"⏳ Sisa     : *{hari} hari*\n"
+        f"🚦 Status   : `{user['status'].upper()}`\n"
+    )
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=owner_button())
+
+
+async def paket_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    paket = get_paket_list()
+    text = (
+        "╔══════════════════════╗\n"
+        "║  💎 *DAFTAR PAKET*    ║\n"
+        "╚══════════════════════╝\n\n"
+    )
+    emoji_map = {"trial": "🎁", "basic": "🥉", "premium": "🥈",
+                 "pro": "🥇", "lifetime": "👑"}
+    for nama, info in paket.items():
+        harga = "GRATIS" if info["harga"] == 0 else f"Rp {info['harga']:,}".replace(",", ".")
+        text += (
+            f"{emoji_map.get(nama, '📦')} *{nama.upper()}*\n"
+            f"   ⏱️ {info['durasi']} hari\n"
+            f"   💰 {harga}\n"
+            f"   🎯 {info['fitur']}\n"
+            "─────────────────────\n"
+        )
+    text += f"\n📞 Hubungi owner: {owner_link()}"
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=owner_button())
+
+
+async def owner_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "╔══════════════════════╗\n"
+        "║  👑 *OWNER INFO*      ║\n"
+        "╚══════════════════════╝\n\n"
+        f"📛 Nama     : *{NAMA_OWNER}*\n"
+        f"💬 Username : @{OWNER_USERNAME}\n"
+        f"🤖 Bot      : *{NAMA_BOT}*\n"
+        f"📌 Versi    : `{VERSION}`\n"
+    )
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=owner_button())
+
 
 # ================== START ==================
 
@@ -409,7 +415,6 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 caption, parse_mode="Markdown", reply_markup=keyboard
             )
 
-    # ============ MAIN ============
     if data == "menu_main":
         if is_owner(uid):
             caption = (
@@ -430,26 +435,6 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "✨ *Pilih menu:*"
             )
         await edit_caption(caption, main_menu_keyboard(uid))
-        return
-
-    # ============ SUBMENUS ============
-    if data == "menu_osint":
-        caption = (
-            header("OSINT TOOLS", "🕵️") +
-            "📧 *Email*        — Cek email & MX\n"
-            "📱 *Phone*        — Cek nomor HP\n"
-            "👤 *Username*     — Cari di 24 platform\n"
-            "🐙 *GitHub*       — Info user GitHub\n"
-            "✈️ *Telegram*     — Cek username TG\n"
-            "📡 *IP Info*      — Geolokasi IP\n"
-            "📬 *MX Check*     — MX/SPF/DMARC\n"
-            "🔍 *Subdomain*    — Cari subdomain\n"
-            "🤖 *Robots.txt*   — Ambil robots.txt\n"
-            "🛡️ *Headers*      — Security headers\n"
-            "🌐 *My IP*        — Cek IP kamu\n\n"
-            "⚠️ _Klik tombol untuk pakai_"
-        )
-        await edit_caption(caption, osint_menu_keyboard())
         return
 
     if data == "menu_recon":
@@ -501,20 +486,6 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚠️ _Klik tombol untuk pakai_"
         )
         await edit_caption(caption, tools_menu_keyboard())
-        return
-
-    if data == "menu_geo":
-        caption = (
-            header("GEOLOCATION", "📍") +
-            "📍 *Geoloc IP*    — Lacak IP\n"
-            "🗺️ *Geocode*     — Nama → koordinat\n"
-            "🔄 *Reverse Geo* — Koordinat → alamat\n"
-            "🏪 *Nearby*      — Tempat terdekat\n"
-            "🚗 *Route*       — Rute A → B\n"
-            "📏 *Distance*    — Jarak 2 titik\n\n"
-            "⚠️ _Klik tombol untuk pakai_"
-        )
-        await edit_caption(caption, geo_menu_keyboard())
         return
 
     if data == "menu_owner":
@@ -589,19 +560,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await edit_caption(caption, paket_keyboard())
         return
 
-    # ============ COMMAND PROMPTS ============
     prompts = {
-        "osint_email": "📧 Kirim: `/email nama@domain.com`",
-        "osint_phone": "📱 Kirim: `/phone +628123456789`",
-        "osint_username": "👤 Kirim: `/username namauser`",
-        "osint_github": "🐙 Kirim: `/github username`",
-        "osint_telegram": "✈️ Kirim: `/telegram username`",
-        "osint_ipinfo": "📡 Kirim: `/ipinfo 8.8.8.8`",
-        "osint_mx": "📬 Kirim: `/mx example.com`",
-        "osint_subdomain": "🔍 Kirim: `/subdomain example.com`",
-        "osint_robots": "🤖 Kirim: `/robots example.com`",
-        "osint_headers": "🛡️ Kirim: `/headers example.com`",
-        "osint_myip": "🌐 Kirim: `/myip`",
         "recon_dns": "🌐 Kirim: `/dns example.com`",
         "recon_sub": "🔎 Kirim: `/sub example.com`",
         "recon_whois": "📋 Kirim: `/whois example.com`",
@@ -626,12 +585,6 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "tools_base64d": "🔓 Kirim: `/base64d aGVsbG8=`",
         "tools_hash": "#️⃣ Kirim: `/hash hello`",
         "tools_jwt": "🎫 Kirim: `/jwt eyJhbG...`",
-        "geo_geoloc2": "📍 Kirim: `/geoloc2 8.8.8.8`",
-        "geo_geocode": "🗺️ Kirim: `/geocode Monas Jakarta`",
-        "geo_revgeo": "🔄 Kirim: `/revgeo -6.1754 106.8272`",
-        "geo_nearby": "🏪 Kirim: `/nearby -6.1754 106.8272 restaurant`",
-        "geo_route": "🚗 Kirim: `/route -6.1754 106.8272 -6.2088 106.8456`",
-        "geo_distance": "📏 Kirim: `/distance -6.1754 106.8272 -6.2088 106.8456`",
         "owner_adduser": "➕ Kirim: `/adduser <id> <nama> <paket>`",
         "owner_removeuser": "➖ Kirim: `/removeuser <id>`",
         "owner_extend": "⏱️ Kirim: `/extend <id> <hari>`",
@@ -661,7 +614,6 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-    # ============ BUY PAKET ============
     if data.startswith("buy_"):
         paket_nama = data.replace("buy_", "")
         paket = get_paket_list().get(paket_nama, {})
@@ -681,7 +633,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_paket")],
         ]))
         return
-        
+
 
 # ================== OWNER COMMANDS ==================
 
@@ -785,7 +737,7 @@ async def listuser_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not users:
         await update.message.reply_text("📭 Belum ada user.")
         return
-    text = f"╔══════════════════════╗\n║  👥 *USER LIST*       ║\n╚══════════════════════╝\n\n"
+    text = "╔══════════════════════╗\n║  👥 *USER LIST*       ║\n╚══════════════════════╝\n\n"
     for id_str, u in users.items():
         hari = sisa_hari(int(id_str))
         emoji = "🚫" if u["status"] == "banned" else ("🟢" if hari > 0 else "🔴")
@@ -846,7 +798,7 @@ async def setowner_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     set_owner_id(new_owner)
     await update.message.reply_text(f"✅ Owner baru: `{new_owner}`", parse_mode="Markdown")
-    
+
 
 # ================== REFERRAL ==================
 
@@ -1028,7 +980,7 @@ async def cekexpired_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔄 Cek user expired...")
     await cek_expired_job(context)
     await msg.edit_text("✅ Selesai cek expired.")
-    
+
 
 # ================== RECON ==================
 
@@ -1580,7 +1532,6 @@ def main():
 
     # Info & User
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("myaccount", myaccount_cmd))
     app.add_handler(CommandHandler("paket", paket_cmd))
     app.add_handler(CommandHandler("owner", owner_cmd))
@@ -1631,19 +1582,6 @@ def main():
     app.add_handler(CommandHandler("hash", hash_cmd))
     app.add_handler(CommandHandler("jwt", jwt_cmd))
 
-    # OSINT
-    app.add_handler(CommandHandler("email", email_cmd))
-    app.add_handler(CommandHandler("phone", phone_cmd))
-    app.add_handler(CommandHandler("username", username_cmd))
-    app.add_handler(CommandHandler("github", github_cmd))
-    app.add_handler(CommandHandler("telegram", telegram_cmd))
-    app.add_handler(CommandHandler("ipinfo", ipinfo_cmd))
-    app.add_handler(CommandHandler("mx", mx_cmd))
-    app.add_handler(CommandHandler("subdomain", subdomain_cmd))
-    app.add_handler(CommandHandler("robots", robots_cmd))
-    app.add_handler(CommandHandler("headers", headers_cmd))
-    app.add_handler(CommandHandler("myip", myip_cmd))
-
     # Callback menu tombol
     app.add_handler(CallbackQueryHandler(menu_callback))
 
@@ -1671,7 +1609,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-    
