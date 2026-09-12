@@ -3,7 +3,7 @@ import json
 import logging
 import asyncio
 import base64
-import datetime
+import datetime as dt_mod
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -36,7 +36,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 SHODAN_KEY = os.getenv("SHODAN_API_KEY", "")
 NAMA_BOT = "DiabloXhunt"
 NAMA_OWNER = "Naddd"
-OWNER_USERNAME = "ZerooTwo2"   # <-- TANPA @
+OWNER_USERNAME = "ZerooTwo2"
 VERSION = "2.2"
 # =================================================
 
@@ -50,12 +50,10 @@ logger = logging.getLogger(__name__)
 # ================== HELPER ==================
 
 def owner_link() -> str:
-    """Link Markdown ke chat owner"""
     return f"[{NAMA_OWNER}](https://t.me/{OWNER_USERNAME})"
 
 
 def owner_button() -> InlineKeyboardMarkup:
-    """Tombol inline chat ke owner"""
     keyboard = [
         [InlineKeyboardButton(
             f"💬 Chat Owner @{OWNER_USERNAME}",
@@ -1423,7 +1421,7 @@ def main():
         job_queue = app.job_queue
         job_queue.run_daily(
             cek_expired_job,
-            time=datetime.time(hour=9, minute=0),
+            time=dt_mod.time(hour=9, minute=0),
         )
         logger.info("Job queue: cek expired harian jam 09:00")
     except Exception as e:
