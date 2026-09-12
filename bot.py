@@ -627,8 +627,8 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_error_handler(error_handler)
 
-    print("🛡️ DiabloXhunt running...")
-    print(f"👤 Owner: {Naddd}")
+    print(f"🛡️ {BOT_NAME} running...")
+print(f"👤 Owner: {OWNER}")
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 
