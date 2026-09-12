@@ -26,8 +26,10 @@ from modules.report import save_json_report, save_html_report
 # ================== KONFIGURASI ==================
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 SHODAN_KEY = os.getenv("SHODAN_API_KEY", "")
-OWNER = os.getenv("OWNER", "Naddd")
-BOT_NAME = os.getenv("BOT_NAME", "DiabloX Hunt")
+
+# Nama bot dan owner langsung ditulis di sini
+NAMA_BOT = "DiabloXhunt"
+NAMA_OWNER = "Naddd"
 VERSION = "1.0"
 # =================================================
 
@@ -75,8 +77,8 @@ def summary_text(findings) -> str:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        f"🛡️ *{DiabloXhunt}* — PUBLIC\n"
-        f"👤 Owner: *{Naddd}*\n\n"
+        f"🛡️ *{NAMA_BOT}* — PUBLIC\n"
+        f"👤 Owner: *{NAMA_OWNER}*\n\n"
         "*RECON:*\n"
         "/dns `<domain>` — DNS enum\n"
         "/sub `<domain>` — Subdomain scan\n"
@@ -115,8 +117,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        f"📖 *CARA PAKAI {DiabloXhunt}*\n"
-        f"👤 Owner: *{Naddd}*\n\n"
+        f"📖 *CARA PAKAI {NAMA_BOT}*\n"
+        f"👤 Owner: *{NAMA_OWNER}*\n\n"
         "Kirim perintah dengan argumen.\n"
         "Bot proses 1-3 menit.\n\n"
         "*Contoh:*\n"
@@ -135,7 +137,7 @@ async def owner_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "==========================\n"
         "========= OWNER ==========\n"
         "==========================\n"
-        f"#  Nama: {Naddd}                     #\n"
+        f"#  Nama: {NAMA_OWNER}                     #\n"
         "=========================="
     )
     await update.message.reply_text(f"```\n{text}\n```", parse_mode="Markdown")
@@ -143,15 +145,15 @@ async def owner_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        f"====== INFO {BOT_NAME.upper()} ======\n"
-        f"Bot    : {BOT_NAME}\n"
+        f"====== INFO {NAMA_BOT.upper()} ======\n"
+        f"Bot    : {NAMA_BOT}\n"
         f"Versi  : {VERSION}\n"
-        f"Owner  : {OWNER}\n"
+        f"Owner  : {NAMA_OWNER}\n"
         f"Status : PUBLIC\n"
         "==========================\n"
         "Bot scanner kerentanan website\n"
         "untuk edukasi & authorized pentest.\n"
-        f"Dibuat oleh {Naddd}.\n"
+        f"Dibuat oleh {NAMA_OWNER}.\n"
         "=========================="
     )
     await update.message.reply_text(f"```\n{text}\n```", parse_mode="Markdown")
@@ -573,7 +575,7 @@ async def handle_text(update, context):
         context.args = [text]
         await scan_cmd(update, context)
     else:
-        await update.message.reply_text(f"❌ Ketik /start untuk menu {BOT_NAME}.")
+        await update.message.reply_text(f"❌ Ketik /start untuk menu {NAMA_BOT}.")
 
 
 async def error_handler(update, context):
@@ -584,7 +586,7 @@ async def error_handler(update, context):
 
 def main():
     if not BOT_TOKEN:
-        print("❌ BOT_TOKEN belum di-set di environment")
+        print("BOT_TOKEN belum di-set di environment")
         return
     app = Application.builder().token(BOT_TOKEN).build()
 
@@ -627,8 +629,10 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_error_handler(error_handler)
 
-    print(f"🛡️ {BOT_NAME} running...")
-print(f"👤 Owner: {OWNER}")
+    # Baris ini yang tadi error, sekarang pakai teks langsung
+    print("DiabloXhunt running...")
+    print("Owner: Naddd")
+
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 
