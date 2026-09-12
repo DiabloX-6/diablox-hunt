@@ -26,13 +26,18 @@ SOURCES = [
 
 PROXY_REGEX = re.compile(r"^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{1,5})$")
 TEST_URL = "http://httpbin.org/ip"
-TIMEOUT = 5
-MAX_WORKERS = 100
+FETCH_TIMEOUT = 8
+TEST_TIMEOUT = 4
+MAX_WORKERS = 150
+
+
+def log(msg):
+    print(f"[PROXY] {msg}", flush=True)
 
 
 def fetch_source(url):
     try:
-        r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        r = requests.get(url, timeout=FETCH_TIMEOUT, headers={"User-Agent": "Mozilla/5.0"})
         if r.status_code != 200:
             return []
         proxies = []
@@ -44,11 +49,11 @@ def fetch_source(url):
                 proxies.append(line)
         return proxies
     except Exception as e:
-        print(f"[!] Gagal fetch {url[:60]}... : {e}")
+        log(f"Gagal fetch {url[:60]}... : {e}")
         return []
 
 
-def test_proxy(proxy, timeout=TIMEOUT):
+def test_proxy(proxy, timeout=TEST_TIMEOUT):
     try:
         r = requests.get(
             TEST_URL,
@@ -64,32 +69,38 @@ def test_proxy(proxy, timeout=TIMEOUT):
 
 
 def scrape_all_proxies(progress_cb=None):
-    print("[+] Mulai scrape proxy dari semua sumber...")
+    log("Mulai scrape proxy...")
     all_proxies = set()
     for i, url in enumerate(SOURCES, 1):
         if progress_cb:
-            progress_cb("fetch", i, len(SOURCES))
+            try:
+                progress_cb("fetch", i, len(SOURCES))
+            except:
+                pass
         batch = fetch_source(url)
-        print(f"[+] {url[:60]}... -> {len(batch)} proxy")
+        log(f"Sumber {i}/{len(SOURCES)}: {len(batch)} proxy")
         all_proxies.update(batch)
 
-    print(f"[+] Total proxy unik (mentah): {len(all_proxies)}")
+    log(f"Total proxy unik mentah: {len(all_proxies)}")
     if not all_proxies:
         return []
 
-    print(f"[+] Health check {len(all_proxies)} proxy...")
+    log(f"Health check {len(all_proxies)} proxy...")
     alive = []
     total = len(all_proxies)
     done = 0
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
         for proxy, ok in ex.map(test_proxy, all_proxies):
             done += 1
-            if progress_cb and done % 50 == 0:
-                progress_cb("check", done, total)
+            if progress_cb and done % 100 == 0:
+                try:
+                    progress_cb("check", done, total)
+                except:
+                    pass
             if ok:
                 alive.append(proxy)
 
-    print(f"[+] Selesai. Proxy hidup: {len(alive)}/{total}")
+    log(f"Selesai. Proxy hidup: {len(alive)}/{total}")
     return alive
 
 
@@ -100,13 +111,15 @@ def save_to_file(proxies, path="proxy.txt"):
         f.write(f"# Total: {len(proxies)}\n\n")
         for p in proxies:
             f.write(p + "\n")
-    print(f"[+] Saved {len(proxies)} proxies to {path}")
+    log(f"Saved {len(proxies)} proxies → {path}")
 
 
 def refresh_proxy_file(path="proxy.txt"):
     proxies = scrape_all_proxies()
     if proxies:
         save_to_file(proxies, path)
+    else:
+        log("Tidak ada proxy hidup, file tidak ditimpa")
     return len(proxies)
 
 
