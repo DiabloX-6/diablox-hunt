@@ -6,9 +6,10 @@ import base64
 from datetime import datetime
 from urllib.parse import urlparse
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler, filters, ContextTypes
+    Application, CommandHandler, MessageHandler, CallbackQueryHandler,
+    filters, ContextTypes
 )
 
 from modules.utils import (
@@ -22,15 +23,18 @@ from modules.recon import (
 )
 from modules.vuln import VulnScanner
 from modules.report import save_json_report, save_html_report
+from database import (
+    is_owner, is_registered, is_active, get_user, add_user, remove_user,
+    extend_user, ban_user, unban_user, list_users, sisa_hari,
+    get_paket_list, set_owner_id, get_owner_id, user_count,
+)
 
 # ================== KONFIGURASI ==================
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 SHODAN_KEY = os.getenv("SHODAN_API_KEY", "")
-
-# Nama bot dan owner langsung ditulis di sini
 NAMA_BOT = "DiabloXhunt"
 NAMA_OWNER = "Naddd"
-VERSION = "1.0"
+VERSION = "2.0"
 # =================================================
 
 logging.basicConfig(
@@ -38,6 +42,34 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+
+# ================== CEK AKSES ==================
+
+def cek_akses(uid):
+    """Return (status, pesan)"""
+    if is_owner(uid):
+        return "owner", ""
+    if not is_registered(uid):
+        return "unregistered", (
+            "🔒 *AKSES DITOLAK*\n\n"
+            "Kamu belum terdaftar sebagai user.\n\n"
+            "Untuk berlangganan, hubungi owner:\n"
+            f"Owner: *{NAMA_OWNER}*\n\n"
+            "Ketik /paket untuk lihat daftar paket."
+        )
+    if not is_active(uid):
+        user = get_user(uid)
+        if user and user.get("status") == "banned":
+            return "banned", "🚫 *AKUN DIBANNED*\n\nHubungi owner untuk info lebih lanjut."
+        return "expired", (
+            "⏰ *LANGGANAN HABIS*\n\n"
+            f"Langganan kamu sudah expired.\n"
+            "Hubungi owner untuk perpanjang:\n"
+            f"Owner: *{NAMA_OWNER}*\n\n"
+            "Ketik /paket untuk lihat daftar paket."
+        )
+    return "active", ""
 
 
 def get_arg(context) -> str:
@@ -73,95 +105,294 @@ def summary_text(findings) -> str:
     return text
 
 
-# ================== INFO ==================
+# ================== START & INFO ==================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
+
+    if status == "owner":
+        text = (
+            f"👑 *{NAMA_BOT} — OWNER MODE*\n"
+            f"👤 Owner: *{NAMA_OWNER}*\n\n"
+            f"📊 Total user: `{user_count()}`\n\n"
+            "*OWNER COMMANDS:*\n"
+            "/adduser `<id> <nama> <paket>` — Tambah user\n"
+            "/removeuser `<id>` — Hapus user\n"
+            "/extend `<id> <hari>` — Perpanjang\n"
+            "/ban `<id>` — Ban user\n"
+            "/unban `<id>` — Unban user\n"
+            "/listuser — Lihat semua user\n"
+            "/userinfo `<id>` — Info user\n"
+            "/setowner `<id>` — Set owner\n\n"
+            "*RECON:*\n"
+            "/dns `/sub` `/whois` `/ip` `/ssl` `/tech` `/waf` `/shodan` `/dork` `/axfr` `/rev`\n\n"
+            "*VULN:*\n"
+            "/scan `/sqli` `/xss` `/lfi` `/ssrf` `/redirect` `/cors` `/methods` `/dir`\n\n"
+            "*TOOLS:*\n"
+            "/base64e `/base64d` `/hash` `/jwt`"
+        )
+        await update.message.reply_text(text, parse_mode="Markdown")
+        return
+
+    user = get_user(uid)
+    hari = sisa_hari(uid)
     text = (
-        f"🛡️ *{NAMA_BOT}* — PUBLIC\n"
-        f"👤 Owner: *{NAMA_OWNER}*\n\n"
+        f"🛡️ *{NAMA_BOT}*\n"
+        f"👤 Halo, *{user['nama']}*\n\n"
+        f"📦 Paket: *{user['paket'].upper()}*\n"
+        f"⏰ Sisa: *{hari} hari*\n"
+        f"📅 Expired: `{user['expired']}`\n\n"
         "*RECON:*\n"
-        "/dns `<domain>` — DNS enum\n"
-        "/sub `<domain>` — Subdomain scan\n"
-        "/whois `<domain>` — WHOIS\n"
-        "/ip `<ip/domain>` — IP info\n"
-        "/ssl `<domain>` — SSL cert\n"
-        "/tech `<url>` — Tech detect\n"
-        "/waf `<url>` — WAF detect\n"
-        "/shodan `<ip>` — Shodan\n"
-        "/dork `<domain>` — Google dork\n"
-        "/axfr `<domain>` — Zone transfer\n"
-        "/rev `<ip>` — Reverse DNS\n\n"
+        "/dns `/sub` `/whois` `/ip` `/ssl` `/tech` `/waf` `/shodan` `/dork` `/axfr` `/rev`\n\n"
         "*VULN:*\n"
-        "/scan `<domain>` — Full scan\n"
-        "/sqli `<url>` — SQL injection\n"
-        "/xss `<url>` — XSS\n"
-        "/lfi `<url>` — LFI\n"
-        "/ssrf `<url>` — SSRF\n"
-        "/redirect `<url>` — Open redirect\n"
-        "/cors `<url>` — CORS\n"
-        "/methods `<url>` — HTTP methods\n"
-        "/dir `<url>` — Dir bruteforce\n\n"
+        "/scan `/sqli` `/xss` `/lfi` `/ssrf` `/redirect` `/cors` `/methods` `/dir`\n\n"
         "*TOOLS:*\n"
-        "/base64e `<text>` — Encode\n"
-        "/base64d `<text>` — Decode\n"
-        "/hash `<text>` — Hash\n"
-        "/jwt `<token>` — Decode JWT\n\n"
-        "*INFO:*\n"
-        "/owner — Owner bot\n"
-        "/info — Info bot\n"
-        "/help — Bantuan\n\n"
-        "⚠️ _Gunakan hanya untuk domain milik Anda._"
+        "/base64e `/base64d` `/hash` `/jwt`\n\n"
+        "/myaccount — Info akun\n"
+        "/paket — Daftar paket\n"
+        "/help — Bantuan"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
 
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def myaccount_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if is_owner(uid):
+        await update.message.reply_text("👑 Kamu adalah owner.")
+        return
+    if not is_registered(uid):
+        await update.message.reply_text("❌ Kamu belum terdaftar.")
+        return
+    user = get_user(uid)
+    hari = sisa_hari(uid)
     text = (
-        f"📖 *CARA PAKAI {NAMA_BOT}*\n"
-        f"👤 Owner: *{NAMA_OWNER}*\n\n"
+        f"👤 *AKUN KAMU*\n\n"
+        f"Nama: *{user['nama']}*\n"
+        f"ID: `{user['id']}`\n"
+        f"Paket: *{user['paket'].upper()}*\n"
+        f"Mulai: `{user['start']}`\n"
+        f"Expired: `{user['expired']}`\n"
+        f"Sisa: *{hari} hari*\n"
+        f"Status: *{user['status']}*"
+    )
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def paket_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    paket = get_paket_list()
+    text = "💎 *DAFTAR PAKET*\n\n"
+    for nama, info in paket.items():
+        harga = "GRATIS" if info["harga"] == 0 else f"Rp {info['harga']:,}".replace(",", ".")
+        text += f"📦 *{nama.upper()}*\n"
+        text += f"   Durasi: {info['durasi']} hari\n"
+        text += f"   Harga: {harga}\n"
+        text += f"   Fitur: {info['fitur']}\n\n"
+    text += f"\nUntuk berlangganan, hubungi owner: *{NAMA_OWNER}*"
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
+    text = (
+        f"📖 *CARA PAKAI {NAMA_BOT}*\n\n"
         "Kirim perintah dengan argumen.\n"
-        "Bot proses 1-3 menit.\n\n"
-        "*Contoh:*\n"
-        "`/scan example.com`\n"
-        "`/sub example.com`\n"
-        "`/dns example.com`\n"
-        "`/ip 8.8.8.8`\n"
-        "`/hash hello`\n\n"
+        "Contoh: `/scan example.com`\n\n"
+        "*Info akun:*\n"
+        "/myaccount — Info akun kamu\n"
+        "/paket — Daftar paket\n\n"
+        "*Recon:*\n"
+        "/dns `/sub` `/whois` `/ip` `/ssl` `/tech` `/waf` `/shodan` `/dork` `/axfr` `/rev`\n\n"
+        "*Vuln:*\n"
+        "/scan `/sqli` `/xss` `/lfi` `/ssrf` `/redirect` `/cors` `/methods` `/dir`\n\n"
+        "*Tools:*\n"
+        "/base64e `/base64d` `/hash` `/jwt`\n\n"
         "⚠️ *Gunakan hanya untuk domain milik Anda.*"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
 
-async def owner_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "==========================\n"
-        "========= OWNER ==========\n"
-        "==========================\n"
-        f"#  Nama: {NAMA_OWNER}                     #\n"
-        "=========================="
-    )
-    await update.message.reply_text(f"```\n{text}\n```", parse_mode="Markdown")
+# ================== OWNER COMMANDS ==================
+
+async def adduser_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_owner(uid):
+        await update.message.reply_text("❌ Command ini hanya untuk owner.")
+        return
+    args = context.args
+    if len(args) < 3:
+        await update.message.reply_text(
+            "❌ Format: `/adduser <id> <nama> <paket>`\n"
+            "Paket: trial / basic / premium / pro / lifetime",
+            parse_mode="Markdown"
+        )
+        return
+    try:
+        target_id = int(args[0])
+    except:
+        await update.message.reply_text("❌ ID harus angka.")
+        return
+    nama = args[1]
+    paket = args[2].lower()
+    ok, msg = add_user(target_id, nama, paket)
+    await update.message.reply_text(f"{'✅' if ok else '❌'} {msg}")
 
 
-async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def removeuser_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_owner(uid):
+        await update.message.reply_text("❌ Command ini hanya untuk owner.")
+        return
+    if not context.args:
+        await update.message.reply_text("❌ Format: `/removeuser <id>`", parse_mode="Markdown")
+        return
+    try:
+        target_id = int(context.args[0])
+    except:
+        await update.message.reply_text("❌ ID harus angka.")
+        return
+    ok, msg = remove_user(target_id)
+    await update.message.reply_text(f"{'✅' if ok else '❌'} {msg}")
+
+
+async def extend_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_owner(uid):
+        await update.message.reply_text("❌ Command ini hanya untuk owner.")
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ Format: `/extend <id> <hari>`", parse_mode="Markdown")
+        return
+    try:
+        target_id = int(context.args[0])
+        hari = int(context.args[1])
+    except:
+        await update.message.reply_text("❌ ID dan hari harus angka.")
+        return
+    ok, msg = extend_user(target_id, hari)
+    await update.message.reply_text(f"{'✅' if ok else '❌'} {msg}")
+
+
+async def ban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_owner(uid):
+        await update.message.reply_text("❌ Command ini hanya untuk owner.")
+        return
+    if not context.args:
+        await update.message.reply_text("❌ Format: `/ban <id>`", parse_mode="Markdown")
+        return
+    try:
+        target_id = int(context.args[0])
+    except:
+        await update.message.reply_text("❌ ID harus angka.")
+        return
+    ok, msg = ban_user(target_id)
+    await update.message.reply_text(f"{'✅' if ok else '❌'} {msg}")
+
+
+async def unban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_owner(uid):
+        await update.message.reply_text("❌ Command ini hanya untuk owner.")
+        return
+    if not context.args:
+        await update.message.reply_text("❌ Format: `/unban <id>`", parse_mode="Markdown")
+        return
+    try:
+        target_id = int(context.args[0])
+    except:
+        await update.message.reply_text("❌ ID harus angka.")
+        return
+    ok, msg = unban_user(target_id)
+    await update.message.reply_text(f"{'✅' if ok else '❌'} {msg}")
+
+
+async def listuser_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_owner(uid):
+        await update.message.reply_text("❌ Command ini hanya untuk owner.")
+        return
+    users = list_users()
+    if not users:
+        await update.message.reply_text("📭 Belum ada user terdaftar.")
+        return
+    text = f"👥 *DAFTAR USER* ({len(users)})\n\n"
+    for id_str, u in users.items():
+        hari = sisa_hari(int(id_str))
+        emoji = "🟢" if u["status"] == "active" and hari > 0 else ("🔴" if u["status"] == "banned" else "🟡")
+        text += f"{emoji} `{id_str}` — *{u['nama']}* ({u['paket']}) — {hari} hari\n"
+    if len(text) > 4000:
+        text = text[:4000] + "\n... (dipotong)"
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def userinfo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_owner(uid):
+        await update.message.reply_text("❌ Command ini hanya untuk owner.")
+        return
+    if not context.args:
+        await update.message.reply_text("❌ Format: `/userinfo <id>`", parse_mode="Markdown")
+        return
+    try:
+        target_id = int(context.args[0])
+    except:
+        await update.message.reply_text("❌ ID harus angka.")
+        return
+    user = get_user(target_id)
+    if not user:
+        await update.message.reply_text("❌ User tidak ditemukan.")
+        return
+    hari = sisa_hari(target_id)
     text = (
-        f"====== INFO {NAMA_BOT.upper()} ======\n"
-        f"Bot    : {NAMA_BOT}\n"
-        f"Versi  : {VERSION}\n"
-        f"Owner  : {NAMA_OWNER}\n"
-        f"Status : PUBLIC\n"
-        "==========================\n"
-        "Bot scanner kerentanan website\n"
-        "untuk edukasi & authorized pentest.\n"
-        f"Dibuat oleh {NAMA_OWNER}.\n"
-        "=========================="
+        f"👤 *USER INFO*\n\n"
+        f"ID: `{user['id']}`\n"
+        f"Nama: *{user['nama']}*\n"
+        f"Paket: *{user['paket'].upper()}*\n"
+        f"Fitur: `{user['fitur']}`\n"
+        f"Mulai: `{user['start']}`\n"
+        f"Expired: `{user['expired']}`\n"
+        f"Sisa: *{hari} hari*\n"
+        f"Status: *{user['status']}*\n"
+        f"Dibuat: `{user['created_at']}`"
     )
-    await update.message.reply_text(f"```\n{text}\n```", parse_mode="Markdown")
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def setowner_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    current_owner = get_owner_id()
+    if current_owner != 0 and not is_owner(uid):
+        await update.message.reply_text("❌ Hanya owner yang bisa ganti owner.")
+        return
+    if not context.args:
+        await update.message.reply_text("❌ Format: `/setowner <id>`", parse_mode="Markdown")
+        return
+    try:
+        new_owner = int(context.args[0])
+    except:
+        await update.message.reply_text("❌ ID harus angka.")
+        return
+    set_owner_id(new_owner)
+    await update.message.reply_text(f"✅ Owner baru: `{new_owner}`", parse_mode="Markdown")
 
 
 # ================== RECON ==================
 
 async def dns_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     domain = get_arg(context)
     if not domain or not is_valid_domain(domain):
         await update.message.reply_text("❌ Format: `/dns example.com`", parse_mode="Markdown")
@@ -181,6 +412,11 @@ async def dns_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def sub_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     domain = get_arg(context)
     if not domain or not is_valid_domain(domain):
         await update.message.reply_text("❌ Format: `/sub example.com`", parse_mode="Markdown")
@@ -202,6 +438,11 @@ async def sub_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def whois_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     domain = get_arg(context)
     if not domain:
         await update.message.reply_text("❌ Format: `/whois example.com`", parse_mode="Markdown")
@@ -218,6 +459,11 @@ async def whois_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def ip_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     target = get_arg(context)
     if not target:
         await update.message.reply_text("❌ Format: `/ip 8.8.8.8`", parse_mode="Markdown")
@@ -242,6 +488,11 @@ async def ip_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def ssl_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     domain = get_arg(context)
     if not domain:
         await update.message.reply_text("❌ Format: `/ssl example.com`", parse_mode="Markdown")
@@ -261,6 +512,11 @@ async def ssl_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def tech_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     url = get_arg(context)
     if not url:
         await update.message.reply_text("❌ Format: `/tech https://example.com`", parse_mode="Markdown")
@@ -281,6 +537,11 @@ async def tech_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def waf_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     url = get_arg(context)
     if not url:
         await update.message.reply_text("❌ Format: `/waf https://example.com`", parse_mode="Markdown")
@@ -301,6 +562,11 @@ async def waf_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def shodan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     ip = get_arg(context)
     if not ip:
         await update.message.reply_text("❌ Format: `/shodan 8.8.8.8`", parse_mode="Markdown")
@@ -326,6 +592,11 @@ async def shodan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def dork_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     domain = get_arg(context)
     if not domain:
         await update.message.reply_text("❌ Format: `/dork example.com`", parse_mode="Markdown")
@@ -338,6 +609,11 @@ async def dork_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def axfr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     domain = get_arg(context)
     if not domain:
         await update.message.reply_text("❌ Format: `/axfr example.com`", parse_mode="Markdown")
@@ -357,6 +633,11 @@ async def axfr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def rev_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     ip = get_arg(context)
     if not ip:
         await update.message.reply_text("❌ Format: `/rev 8.8.8.8`", parse_mode="Markdown")
@@ -374,6 +655,25 @@ async def rev_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================== VULN ==================
 
 async def scan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
+
+    # Cek fitur (basic tidak bisa scan vuln)
+    if not is_owner(uid):
+        user = get_user(uid)
+        if user["fitur"] == "recon":
+            await update.message.reply_text(
+                "🔒 *FITUR TERBATAS*\n\n"
+                "Paket *BASIC* hanya bisa akses fitur Recon.\n"
+                "Upgrade ke *PREMIUM* untuk akses fitur Vuln scan.\n\n"
+                f"Hubungi owner: *{NAMA_OWNER}*",
+                parse_mode="Markdown"
+            )
+            return
+
     target = get_arg(context)
     if not target:
         await update.message.reply_text("❌ Format: `/scan example.com`", parse_mode="Markdown")
@@ -435,6 +735,19 @@ async def scan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _quick_vuln(update, context, test_name, test_func):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
+    if not is_owner(uid):
+        user = get_user(uid)
+        if user["fitur"] == "recon":
+            await update.message.reply_text(
+                "🔒 *FITUR TERBATAS*\n\nPaket BASIC hanya Recon.\nUpgrade ke PREMIUM.",
+                parse_mode="Markdown"
+            )
+            return
     url = get_arg(context)
     if not url:
         await update.message.reply_text(f"❌ Format: `/{test_name} <url>`", parse_mode="Markdown")
@@ -478,6 +791,11 @@ async def methods_cmd(update, context):
 
 
 async def cors_cmd(update, context):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     url = get_arg(context)
     if not url:
         await update.message.reply_text("❌ Format: `/cors <url>`", parse_mode="Markdown")
@@ -497,6 +815,11 @@ async def cors_cmd(update, context):
 
 
 async def dir_cmd(update, context):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     url = get_arg(context)
     if not url:
         await update.message.reply_text("❌ Format: `/dir <url>`", parse_mode="Markdown")
@@ -518,6 +841,11 @@ async def dir_cmd(update, context):
 # ================== TOOLS ==================
 
 async def base64e_cmd(update, context):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     text = " ".join(context.args) if context.args else ""
     if not text:
         await update.message.reply_text("❌ Format: `/base64e hello`", parse_mode="Markdown")
@@ -526,6 +854,11 @@ async def base64e_cmd(update, context):
 
 
 async def base64d_cmd(update, context):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     text = " ".join(context.args) if context.args else ""
     if not text:
         await update.message.reply_text("❌ Format: `/base64d aGVsbG8=`", parse_mode="Markdown")
@@ -537,6 +870,11 @@ async def base64d_cmd(update, context):
 
 
 async def hash_cmd(update, context):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     text = " ".join(context.args) if context.args else ""
     if not text:
         await update.message.reply_text("❌ Format: `/hash hello`", parse_mode="Markdown")
@@ -549,6 +887,11 @@ async def hash_cmd(update, context):
 
 
 async def jwt_cmd(update, context):
+    uid = update.effective_user.id
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        await update.message.reply_text(pesan, parse_mode="Markdown")
+        return
     token = get_arg(context)
     if not token:
         await update.message.reply_text("❌ Format: `/jwt <token>`", parse_mode="Markdown")
@@ -590,11 +933,21 @@ def main():
         return
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Info
+    # Info & User
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
-    app.add_handler(CommandHandler("owner", owner_cmd))
-    app.add_handler(CommandHandler("info", info_cmd))
+    app.add_handler(CommandHandler("myaccount", myaccount_cmd))
+    app.add_handler(CommandHandler("paket", paket_cmd))
+
+    # Owner
+    app.add_handler(CommandHandler("adduser", adduser_cmd))
+    app.add_handler(CommandHandler("removeuser", removeuser_cmd))
+    app.add_handler(CommandHandler("extend", extend_cmd))
+    app.add_handler(CommandHandler("ban", ban_cmd))
+    app.add_handler(CommandHandler("unban", unban_cmd))
+    app.add_handler(CommandHandler("listuser", listuser_cmd))
+    app.add_handler(CommandHandler("userinfo", userinfo_cmd))
+    app.add_handler(CommandHandler("setowner", setowner_cmd))
 
     # Recon
     app.add_handler(CommandHandler("dns", dns_cmd))
@@ -629,8 +982,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_error_handler(error_handler)
 
-    # Baris ini yang tadi error, sekarang pakai teks langsung
-    print("DiabloXhunt running...")
+    print("DiabloXhunt Private Edition running...")
     print("Owner: Naddd")
 
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
