@@ -24,6 +24,7 @@ from modules.recon import (
 )
 from modules.vuln import VulnScanner
 from modules.report import save_json_report, save_html_report
+from modules.tiktok_crack import run_tiktok_checker
 from database import (
     is_owner, is_registered, is_active, get_user, add_user, remove_user,
     extend_user, ban_user, unban_user, list_users, sisa_hari,
@@ -38,6 +39,7 @@ SHODAN_KEY = os.getenv("SHODAN_API_KEY", "")
 NAMA_BOT = "DiabloXhunt"
 NAMA_OWNER = "Naddd"
 OWNER_USERNAME = "ZerooTwo2"
+OWNER_ID = 123456789  # <-- GANTI KE ID TELEGRAM KAMU
 VERSION = "2.5"
 BANNER_URL = os.getenv("BANNER_URL", "https://i.imgur.com/pp1gIFY.jpeg")
 # =================================================
@@ -66,7 +68,7 @@ def owner_button() -> InlineKeyboardMarkup:
 
 
 def cek_akses(uid):
-    if is_owner(uid):
+    if is_owner(uid) or uid == OWNER_ID:
         return "owner", ""
     if not is_registered(uid):
         return "unregistered", (
@@ -105,6 +107,10 @@ def get_arg(context) -> str:
     return context.args[0] if context.args else ""
 
 
+def is_owner_uid(uid):
+    return uid == OWNER_ID or is_owner(uid)
+
+
 def fmt_findings(findings, limit=15) -> str:
     sev_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
     findings = sorted(findings, key=lambda f: sev_order.get(f["severity"], 5))
@@ -138,12 +144,16 @@ def summary_text(findings) -> str:
 
 def main_menu_keyboard(uid):
     keyboard = []
-    if is_owner(uid):
+    if is_owner_uid(uid):
         keyboard.append([InlineKeyboardButton("👑 Owner Panel", callback_data="menu_owner")])
     keyboard.extend([
         [InlineKeyboardButton("🔍 Recon Tools", callback_data="menu_recon")],
         [InlineKeyboardButton("💥 Vuln Scanner", callback_data="menu_vuln")],
         [InlineKeyboardButton("🧰 Tools & Utility", callback_data="menu_tools")],
+    ])
+    if is_owner_uid(uid):
+        keyboard.append([InlineKeyboardButton("🎵 TikTok Checker", callback_data="menu_tiktok")])
+    keyboard.extend([
         [
             InlineKeyboardButton("👤 Akun Saya", callback_data="menu_akun"),
             InlineKeyboardButton("💎 Paket", callback_data="menu_paket"),
@@ -155,26 +165,16 @@ def main_menu_keyboard(uid):
 
 def recon_menu_keyboard():
     return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🌐 DNS", callback_data="recon_dns"),
-            InlineKeyboardButton("🔎 Subdomain", callback_data="recon_sub"),
-        ],
-        [
-            InlineKeyboardButton("📋 WHOIS", callback_data="recon_whois"),
-            InlineKeyboardButton("🌍 IP", callback_data="recon_ip"),
-        ],
-        [
-            InlineKeyboardButton("🔒 SSL", callback_data="recon_ssl"),
-            InlineKeyboardButton("🔧 Tech", callback_data="recon_tech"),
-        ],
-        [
-            InlineKeyboardButton("🛡️ WAF", callback_data="recon_waf"),
-            InlineKeyboardButton("🔭 Shodan", callback_data="recon_shodan"),
-        ],
-        [
-            InlineKeyboardButton("🕵️ Dork", callback_data="recon_dork"),
-            InlineKeyboardButton("📡 AXFR", callback_data="recon_axfr"),
-        ],
+        [InlineKeyboardButton("🌐 DNS", callback_data="recon_dns"),
+         InlineKeyboardButton("🔎 Subdomain", callback_data="recon_sub")],
+        [InlineKeyboardButton("📋 WHOIS", callback_data="recon_whois"),
+         InlineKeyboardButton("🌍 IP", callback_data="recon_ip")],
+        [InlineKeyboardButton("🔒 SSL", callback_data="recon_ssl"),
+         InlineKeyboardButton("🔧 Tech", callback_data="recon_tech")],
+        [InlineKeyboardButton("🛡️ WAF", callback_data="recon_waf"),
+         InlineKeyboardButton("🔭 Shodan", callback_data="recon_shodan")],
+        [InlineKeyboardButton("🕵️ Dork", callback_data="recon_dork"),
+         InlineKeyboardButton("📡 AXFR", callback_data="recon_axfr")],
         [InlineKeyboardButton("🔄 Reverse DNS", callback_data="recon_rev")],
         [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
     ])
@@ -183,83 +183,59 @@ def recon_menu_keyboard():
 def vuln_menu_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🚀 Full Scan", callback_data="vuln_scan")],
-        [
-            InlineKeyboardButton("💉 SQLi", callback_data="vuln_sqli"),
-            InlineKeyboardButton("🎯 XSS", callback_data="vuln_xss"),
-        ],
-        [
-            InlineKeyboardButton("📂 LFI", callback_data="vuln_lfi"),
-            InlineKeyboardButton("🌐 SSRF", callback_data="vuln_ssrf"),
-        ],
-        [
-            InlineKeyboardButton("🔀 Redirect", callback_data="vuln_redirect"),
-            InlineKeyboardButton("🔓 CORS", callback_data="vuln_cors"),
-        ],
-        [
-            InlineKeyboardButton("⚙️ Methods", callback_data="vuln_methods"),
-            InlineKeyboardButton("📁 Dir", callback_data="vuln_dir"),
-        ],
+        [InlineKeyboardButton("💉 SQLi", callback_data="vuln_sqli"),
+         InlineKeyboardButton("🎯 XSS", callback_data="vuln_xss")],
+        [InlineKeyboardButton("📂 LFI", callback_data="vuln_lfi"),
+         InlineKeyboardButton("🌐 SSRF", callback_data="vuln_ssrf")],
+        [InlineKeyboardButton("🔀 Redirect", callback_data="vuln_redirect"),
+         InlineKeyboardButton("🔓 CORS", callback_data="vuln_cors")],
+        [InlineKeyboardButton("⚙️ Methods", callback_data="vuln_methods"),
+         InlineKeyboardButton("📁 Dir", callback_data="vuln_dir")],
         [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
     ])
 
 
 def tools_menu_keyboard():
     return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🔐 Base64 Encode", callback_data="tools_base64e"),
-            InlineKeyboardButton("🔓 Base64 Decode", callback_data="tools_base64d"),
-        ],
-        [
-            InlineKeyboardButton("#️⃣ Hash", callback_data="tools_hash"),
-            InlineKeyboardButton("🎫 JWT Decode", callback_data="tools_jwt"),
-        ],
+        [InlineKeyboardButton("🔐 Base64 Encode", callback_data="tools_base64e"),
+         InlineKeyboardButton("🔓 Base64 Decode", callback_data="tools_base64d")],
+        [InlineKeyboardButton("#️⃣ Hash", callback_data="tools_hash"),
+         InlineKeyboardButton("🎫 JWT Decode", callback_data="tools_jwt")],
         [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
     ])
 
 
 def owner_menu_keyboard():
     return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("➕ Add User", callback_data="owner_adduser"),
-            InlineKeyboardButton("➖ Remove", callback_data="owner_removeuser"),
-        ],
-        [
-            InlineKeyboardButton("⏱️ Extend", callback_data="owner_extend"),
-            InlineKeyboardButton("🚫 Ban", callback_data="owner_ban"),
-        ],
-        [
-            InlineKeyboardButton("✅ Unban", callback_data="owner_unban"),
-            InlineKeyboardButton("📋 List User", callback_data="owner_listuser"),
-        ],
-        [
-            InlineKeyboardButton("🔍 User Info", callback_data="owner_userinfo"),
-            InlineKeyboardButton("🔄 Cek Expired", callback_data="owner_cekexpired"),
-        ],
+        [InlineKeyboardButton("➕ Add User", callback_data="owner_adduser"),
+         InlineKeyboardButton("➖ Remove", callback_data="owner_removeuser")],
+        [InlineKeyboardButton("⏱️ Extend", callback_data="owner_extend"),
+         InlineKeyboardButton("🚫 Ban", callback_data="owner_ban")],
+        [InlineKeyboardButton("✅ Unban", callback_data="owner_unban"),
+         InlineKeyboardButton("📋 List User", callback_data="owner_listuser")],
+        [InlineKeyboardButton("🔍 User Info", callback_data="owner_userinfo"),
+         InlineKeyboardButton("🔄 Cek Expired", callback_data="owner_cekexpired")],
         [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
     ])
 
 
 def paket_keyboard():
     return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🎁 Trial (FREE)", callback_data="buy_trial"),
-            InlineKeyboardButton("🥉 Basic (10rb)", callback_data="buy_basic"),
-        ],
-        [
-            InlineKeyboardButton("🥈 Premium (25rb)", callback_data="buy_premium"),
-            InlineKeyboardButton("🥇 Pro (50rb)", callback_data="buy_pro"),
-        ],
+        [InlineKeyboardButton("🎁 Trial (FREE)", callback_data="buy_trial"),
+         InlineKeyboardButton("🥉 Basic (10rb)", callback_data="buy_basic")],
+        [InlineKeyboardButton("🥈 Premium (25rb)", callback_data="buy_premium"),
+         InlineKeyboardButton("🥇 Pro (50rb)", callback_data="buy_pro")],
         [InlineKeyboardButton("👑 Lifetime (200rb)", callback_data="buy_lifetime")],
         [InlineKeyboardButton(f"💬 Chat Owner @{OWNER_USERNAME}", url=f"https://t.me/{OWNER_USERNAME}")],
         [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
     ])
-    
+
 
 # ================== INFO & USER COMMANDS ==================
 
 async def myaccount_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if is_owner(uid):
+    if is_owner_uid(uid):
         await update.message.reply_text("👑 Kamu owner. Ketik /start")
         return
     if not is_registered(uid):
@@ -323,17 +299,14 @@ async def owner_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
-
     if status in ("unregistered", "banned", "expired"):
-        await update.message.reply_text(
-            pesan, parse_mode="Markdown", reply_markup=owner_button()
-        )
+        await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
         return
 
-    user = get_user(uid) if not is_owner(uid) else None
+    user = get_user(uid) if not is_owner_uid(uid) else None
     hari = sisa_hari(uid) if user else 0
 
-    if is_owner(uid):
+    if is_owner_uid(uid):
         caption = (
             "╔══════════════════════╗\n"
             "║  👑 *DIABLOX HUNT*   ║\n"
@@ -361,8 +334,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         await update.message.reply_photo(
-            photo=BANNER_URL,
-            caption=caption,
+            photo=BANNER_URL, caption=caption,
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard(uid)
         )
@@ -374,6 +346,104 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+# ================== TIKTOK CHECKER (OWNER ONLY) ==================
+
+async def ttcheck_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_owner_uid(uid):
+        await update.message.reply_text("🚫 Command ini hanya untuk owner.")
+        return
+    await update.message.reply_text(
+        "╔══════════════════════╗\n"
+        "║  🎵 *TIKTOK CHECKER*  ║\n"
+        "╚══════════════════════╝\n\n"
+        "📄 Kirim file `.txt` berisi combo `email:password`\n\n"
+        "⚙️ *Setting:*\n"
+        "• Threads: `10`\n"
+        "• Delay: `1.5-4s` + backoff\n"
+        "• Proxy: `aktif jika ada proxy.txt`\n"
+        "• Retry: `3x`\n"
+        "• Rotasi UA + X-Gorgon + X-Argus + X-Ladon\n"
+        "• Proxy health check: `aktif`\n"
+        "• Validasi combo: `aktif`",
+        parse_mode="Markdown"
+    )
+
+
+async def handle_tt_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_owner_uid(uid):
+        await update.message.reply_text("🚫 Command ini hanya untuk owner.")
+        return
+
+    doc = update.message.document
+    if not doc.file_name.endswith(".txt"):
+        await update.message.reply_text("❌ File harus .txt")
+        return
+
+    await update.message.reply_text("⏳ Downloading...")
+    f = await doc.get_file()
+    path = f"tt_combo_{uid}.txt"
+    await f.download_to_drive(path)
+
+    with open(path, "r", encoding="utf-8", errors="ignore") as fp:
+        combos = [l.strip() for l in fp if ":" in l]
+
+    if not combos:
+        await update.message.reply_text("❌ File kosong / format salah.")
+        os.remove(path)
+        return
+
+    status_msg = await update.message.reply_text(
+        f"🔎 Checking {len(combos)} combo...\nProgress: 0/{len(combos)}"
+    )
+
+    last_update = {"t": 0}
+    loop = asyncio.get_event_loop()
+
+    async def progress(done, total):
+        now = loop.time()
+        if now - last_update["t"] > 5:
+            last_update["t"] = now
+            try:
+                await status_msg.edit_text(
+                    f"🔎 Checking {total} combo...\nProgress: {done}/{total}"
+                )
+            except:
+                pass
+
+    def sync_progress(done, total):
+        asyncio.run_coroutine_threadsafe(progress(done, total), loop)
+
+    result = await loop.run_in_executor(
+        None, lambda: run_tiktok_checker(combos, sync_progress)
+    )
+
+    msg = (
+        f"📊 *HASIL TIKTOK*\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"✅ HIT      : {len(result['hits'])}\n"
+        f"❌ WRONG    : {result['wrong']}\n"
+        f"🤖 CAPTCHA  : {result['captcha']}\n"
+        f"⚠️ ERROR    : {result['errors']}\n"
+        f"🚫 SKIPPED  : {result.get('skipped', 0)}\n"
+        f"📦 TOTAL    : {result['total']}"
+    )
+    await status_msg.edit_text(msg, parse_mode="Markdown")
+
+    if result["hits"]:
+        out = f"tt_hit_{uid}.txt"
+        with open(out, "w") as fo:
+            fo.write("\n".join(result["hits"]))
+        await update.message.reply_document(
+            document=open(out, "rb"),
+            filename="tiktok_hit.txt",
+            caption=f"🎯 {len(result['hits'])} HIT"
+        )
+        os.remove(out)
+    os.remove(path)
+
+
 # ================== CALLBACK HANDLER ==================
 
 async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -382,7 +452,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     uid = query.from_user.id
 
-    if not is_owner(uid):
+    if not is_owner_uid(uid):
         status, pesan = cek_akses(uid)
         if status in ("unregistered", "banned", "expired"):
             try:
@@ -395,7 +465,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             return
 
-    user = get_user(uid) if not is_owner(uid) else None
+    user = get_user(uid) if not is_owner_uid(uid) else None
     hari = sisa_hari(uid) if user else 0
 
     def header(title, emoji="✨"):
@@ -416,7 +486,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
     if data == "menu_main":
-        if is_owner(uid):
+        if is_owner_uid(uid):
             caption = (
                 header("OWNER ACCESS", "👑") +
                 f"👑 *Owner* : `{NAMA_OWNER}`\n"
@@ -457,7 +527,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "menu_vuln":
-        if not is_owner(uid) and user and user["fitur"] == "recon":
+        if not is_owner_uid(uid) and user and user["fitur"] == "recon":
             await query.answer("🔒 Paket BASIC hanya Recon. Upgrade ke PREMIUM!", show_alert=True)
             return
         caption = (
@@ -488,8 +558,50 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await edit_caption(caption, tools_menu_keyboard())
         return
 
+    if data == "menu_tiktok":
+        if not is_owner_uid(uid):
+            await query.answer("🔒 Fitur TikTok Checker hanya untuk owner!", show_alert=True)
+            return
+        caption = (
+            header("TIKTOK CHECKER", "🎵") +
+            "📄 *Cara pakai:*\n\n"
+            "1. Ketik `/ttcheck`\n"
+            "2. Kirim file `.txt` combo `email:password`\n"
+            "3. Tunggu proses\n"
+            "4. Hasil HIT dikirim sebagai file\n\n"
+            "⚙️ *Setting:*\n"
+            "• Threads: `10`\n"
+            "• Delay: `1.5-4s` + backoff\n"
+            "• Proxy: `aktif jika ada proxy.txt`\n"
+            "• Retry: `3x`\n"
+            "• Rotasi UA + X-Gorgon + X-Argus + X-Ladon\n"
+            "• Proxy health check: `aktif`\n"
+            "• Validasi combo: `aktif`\n\n"
+            "🔒 _Fitur ini hanya untuk owner_"
+        )
+        await edit_caption(caption, InlineKeyboardMarkup([
+            [InlineKeyboardButton("🚀 Mulai Check", callback_data="tiktok_start")],
+            [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
+        ]))
+        return
+
+    if data == "tiktok_start":
+        if not is_owner_uid(uid):
+            await query.answer("🔒 Owner only!", show_alert=True)
+            return
+        await edit_caption(
+            header("TIKTOK CHECKER", "🎵") +
+            "📄 Kirim file `.txt` combo `email:password` sekarang.\n\n"
+            "Format:\n"
+            "```\nemail1:password1\nemail2:password2\n```",
+            InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_tiktok")],
+            ])
+        )
+        return
+
     if data == "menu_owner":
-        if not is_owner(uid):
+        if not is_owner_uid(uid):
             await query.answer("❌ Hanya owner!", show_alert=True)
             return
         caption = (
@@ -509,7 +621,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "menu_akun":
-        if is_owner(uid):
+        if is_owner_uid(uid):
             await query.answer("👑 Kamu owner!", show_alert=True)
             return
         caption = (
@@ -639,7 +751,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def adduser_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if not is_owner(uid):
+    if not is_owner_uid(uid):
         await update.message.reply_text("❌ Command ini hanya untuk owner.")
         return
     args = context.args
@@ -661,7 +773,7 @@ async def adduser_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def removeuser_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if not is_owner(uid):
+    if not is_owner_uid(uid):
         await update.message.reply_text("❌ Hanya owner.")
         return
     if not context.args:
@@ -678,7 +790,7 @@ async def removeuser_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def extend_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if not is_owner(uid):
+    if not is_owner_uid(uid):
         await update.message.reply_text("❌ Hanya owner.")
         return
     if len(context.args) < 2:
@@ -696,7 +808,7 @@ async def extend_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if not is_owner(uid):
+    if not is_owner_uid(uid):
         await update.message.reply_text("❌ Hanya owner.")
         return
     if not context.args:
@@ -713,7 +825,7 @@ async def ban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def unban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if not is_owner(uid):
+    if not is_owner_uid(uid):
         await update.message.reply_text("❌ Hanya owner.")
         return
     if not context.args:
@@ -730,7 +842,7 @@ async def unban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def listuser_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if not is_owner(uid):
+    if not is_owner_uid(uid):
         await update.message.reply_text("❌ Hanya owner.")
         return
     users = list_users()
@@ -749,7 +861,7 @@ async def listuser_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def userinfo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if not is_owner(uid):
+    if not is_owner_uid(uid):
         await update.message.reply_text("❌ Hanya owner.")
         return
     if not context.args:
@@ -785,7 +897,7 @@ async def userinfo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def setowner_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if get_owner_id() != 0 and not is_owner(uid):
+    if get_owner_id() != 0 and not is_owner_uid(uid):
         await update.message.reply_text("❌ Hanya owner.")
         return
     if not context.args:
@@ -804,7 +916,7 @@ async def setowner_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def myref_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if is_owner(uid):
+    if is_owner_uid(uid):
         stats = get_ref_stats(uid) or {"code": "-", "count": 0, "history": []}
     else:
         status, pesan = cek_akses(uid)
@@ -837,7 +949,7 @@ async def myref_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def topref_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if not is_owner(uid):
+    if not is_owner_uid(uid):
         status, pesan = cek_akses(uid)
         if status in ("unregistered", "banned", "expired"):
             await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
@@ -855,7 +967,7 @@ async def topref_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def register_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if is_owner(uid):
+    if is_owner_uid(uid):
         await update.message.reply_text("👑 Kamu owner.")
         return
     if is_registered(uid):
@@ -974,7 +1086,7 @@ async def cek_expired_job(context: ContextTypes.DEFAULT_TYPE):
 
 async def cekexpired_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if not is_owner(uid):
+    if not is_owner_uid(uid):
         await update.message.reply_text("❌ Hanya owner.")
         return
     msg = await update.message.reply_text("🔄 Cek user expired...")
@@ -1257,7 +1369,7 @@ async def scan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if status in ("unregistered", "banned", "expired"):
         await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
         return
-    if not is_owner(uid):
+    if not is_owner_uid(uid):
         user = get_user(uid)
         if user and user["fitur"] == "recon":
             await update.message.reply_text(
@@ -1331,7 +1443,7 @@ async def _quick_vuln(update, context, test_name, test_func):
     if status in ("unregistered", "banned", "expired"):
         await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button())
         return
-    if not is_owner(uid):
+    if not is_owner_uid(uid):
         user = get_user(uid)
         if user and user["fitur"] == "recon":
             await update.message.reply_text(
@@ -1530,18 +1642,15 @@ def main():
         return
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Info & User
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("myaccount", myaccount_cmd))
     app.add_handler(CommandHandler("paket", paket_cmd))
     app.add_handler(CommandHandler("owner", owner_cmd))
 
-    # Referral
     app.add_handler(CommandHandler("myref", myref_cmd))
     app.add_handler(CommandHandler("topref", topref_cmd))
     app.add_handler(CommandHandler("register", register_cmd))
 
-    # Owner
     app.add_handler(CommandHandler("adduser", adduser_cmd))
     app.add_handler(CommandHandler("removeuser", removeuser_cmd))
     app.add_handler(CommandHandler("extend", extend_cmd))
@@ -1552,7 +1661,6 @@ def main():
     app.add_handler(CommandHandler("setowner", setowner_cmd))
     app.add_handler(CommandHandler("cekexpired", cekexpired_cmd))
 
-    # Recon
     app.add_handler(CommandHandler("dns", dns_cmd))
     app.add_handler(CommandHandler("sub", sub_cmd))
     app.add_handler(CommandHandler("whois", whois_cmd))
@@ -1565,7 +1673,6 @@ def main():
     app.add_handler(CommandHandler("axfr", axfr_cmd))
     app.add_handler(CommandHandler("rev", rev_cmd))
 
-    # Vuln
     app.add_handler(CommandHandler("scan", scan_cmd))
     app.add_handler(CommandHandler("sqli", sqli_cmd))
     app.add_handler(CommandHandler("xss", xss_cmd))
@@ -1576,20 +1683,26 @@ def main():
     app.add_handler(CommandHandler("methods", methods_cmd))
     app.add_handler(CommandHandler("dir", dir_cmd))
 
-    # Tools
     app.add_handler(CommandHandler("base64e", base64e_cmd))
     app.add_handler(CommandHandler("base64d", base64d_cmd))
     app.add_handler(CommandHandler("hash", hash_cmd))
     app.add_handler(CommandHandler("jwt", jwt_cmd))
 
-    # Callback menu tombol
+    # TikTok Checker (owner only)
+    app.add_handler(CommandHandler("ttcheck", ttcheck_cmd))
+
     app.add_handler(CallbackQueryHandler(menu_callback))
 
-    # Text handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+    # TikTok file handler (owner only)
+    app.add_handler(MessageHandler(
+        filters.Document.FileExtension("txt") & filters.User(user_id=5728930563),
+        handle_tt_file
+    ))
+
     app.add_error_handler(error_handler)
 
-    # Job harian cek expired (jam 9 pagi)
     try:
         job_queue = app.job_queue
         job_queue.run_daily(
