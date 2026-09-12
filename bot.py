@@ -1676,7 +1676,7 @@ def main():
 
     # File handler (owner only) - taruh di bawah text handler biar text tetap jalan
     app.add_handler(MessageHandler(
-        filters.Document.FileExtension("txt") & filters.User(user_id=OWNER_ID),
+        filters.Document.FileExtension("txt") & filters.User(user_id=5728930563),
         handle_tt_file
     ))
 
