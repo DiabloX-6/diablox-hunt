@@ -20,7 +20,7 @@ from modules.vuln import VulnScanner
 from modules.report import save_json_report, save_html_report
 
 # ================== KONFIGURASI ==================
-BOT_TOKEN = os.getenv("8235207642:AAHTBgGUMHIQI4Dr0SG4jy7wRqYFgeX3tN4", "")
+BOT_TOKEN = os.getenv("8227893969:AAHNmP0rlz6OlrHBTUWsaR5VHlySrF16YT0", "")
 SHODAN_KEY = os.getenv("NBzh1tvsXxNyPpFvEZkAKALy8JN82x5W", "")
 OWNER = os.getenv("OWNER", "Naddd")
 BOT_NAME = os.getenv("BOT_NAME", "DiabloX Hunt")
