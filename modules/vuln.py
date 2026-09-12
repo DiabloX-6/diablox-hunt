@@ -253,22 +253,6 @@ class VulnScanner:
                                          cvss="9.8", cwe="CWE-89")
                         break
 
-        for url, param in list(self.params)[:5]:
-            parsed = urlparse(url)
-            qs = parse_qs(parsed.query)
-            for payload in SQLI_TIME_PAYLOADS:
-                nq = qs.copy()
-                nq[param] = [payload]
-                test_url = urlunparse(parsed._replace(query=urlencode(nq, doseq=True)))
-                start = time.time()
-                r = self.request(test_url, timeout=15)
-                elapsed = time.time() - start
-                if elapsed >= 4.5:
-                    self.add_finding("SQL Injection (Time-Based)", "CRITICAL",
-                                     test_url, f"Payload: {payload} | Delay: {elapsed:.2f}s",
-                                     cvss="9.8", cwe="CWE-89")
-                    break
-
     def test_xss(self):
         self.log("Cek XSS...")
         for url, param in list(self.params)[:15]:
@@ -392,13 +376,6 @@ class VulnScanner:
                              f"ACAO: {r['acao']} | ACAC: {r['acac']}",
                              cwe="CWE-942")
 
-    def test_jwt(self):
-        self.log("Cek JWT...")
-        for cookie in self.session.cookies:
-            if len(cookie.value.split(".")) == 3:
-                self.add_finding("JWT Token Found", "INFO", self.target,
-                                 f"Cookie: {cookie.name}", cwe="CWE-522")
-
     def test_http_methods(self):
         self.log("Cek HTTP methods...")
         dangerous = []
@@ -455,7 +432,6 @@ class VulnScanner:
         self.test_cmd_injection()
         self.test_crlf()
         self.test_cors()
-        self.test_jwt()
         self.test_http_methods()
         self.dir_bruteforce()
 
