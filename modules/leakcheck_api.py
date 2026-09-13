@@ -1,103 +1,89 @@
 #!/usr/bin/env python3
 # modules/leakcheck_api.py
-# Integrasi LeakCheck.io API v2
+# PSBDMP API - Gratis, no key, unlimited
+# Ganti LeakCheck dengan PSBDMP
 
 import os
 import requests
 
-LEAKCHECK_KEY = os.getenv("LEAKCHECK_KEY", "")
-LEAKCHECK_URL = "https://leakcheck.io/api/v2/query"
+PSBDMP_URL = "https://psbdmp.ws/api/v3/search"
 
 
 def check_leakcheck(query: str, query_type: str = "email") -> dict:
     """
-    Cek email/username/phone/domain di LeakCheck.
+    Cari email/username/domain di PSBDMP (pastebin search).
     query_type: email | username | phone | domain
+    PSBDMP ga bedain tipe, jadi semua tipe di-treat sama.
+    Return: dict {success: bool, data: dict} atau {error: str}
     """
-    if not LEAKCHECK_KEY:
-        return {"error": "LEAKCHECK_KEY belum di-set di .env"}
-
-    headers = {
-        "X-API-Key": LEAKCHECK_KEY,
-        "Accept": "application/json",
-    }
-    params = {
-        "check": query,
-        "type": query_type,
-    }
+    if not query or len(query) < 3:
+        return {"error": "Query terlalu pendek (min 3 karakter)"}
 
     try:
-        r = requests.get(LEAKCHECK_URL, headers=headers, params=params, timeout=30)
+        url = f"{PSBDMP_URL}/{query}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+        }
+        r = requests.get(url, headers=headers, timeout=30)
+
         if r.status_code == 200:
             data = r.json()
-            return {"success": True, "data": data}
-        elif r.status_code == 401:
-            return {"error": "API key LeakCheck invalid. Cek di leakcheck.io/dashboard"}
+            if data.get("success"):
+                return {"success": True, "data": data.get("data", [])}
+            else:
+                return {"success": True, "data": []}
+        elif r.status_code == 404:
+            return {"success": True, "data": []}
         elif r.status_code == 429:
-            return {"error": "Rate limit LeakCheck (100 query/hari di free tier). Coba besok."}
-        elif r.status_code == 403:
-            return {"error": "Akses ditolak. Paket free cuma bisa email/username/phone basic."}
+            return {"error": "Rate limit PSBDMP. Coba lagi 1-2 menit."}
         else:
-            return {"error": f"LeakCheck error: HTTP {r.status_code}"}
+            return {"error": f"PSBDMP error: HTTP {r.status_code}"}
     except requests.exceptions.Timeout:
-        return {"error": "LeakCheck timeout. Coba lagi."}
+        return {"error": "PSBDMP timeout. Coba lagi."}
     except Exception as e:
-        return {"error": f"LeakCheck error: {e}"}
+        return {"error": f"PSBDMP error: {e}"}
 
 
 def format_leakcheck_result(query: str, result: dict) -> str:
-    """Format hasil LeakCheck jadi text rapi buat Telegram."""
+    """Format hasil PSBDMP jadi text rapi buat Telegram."""
     if "error" in result:
         return f"❌ *Error:* {result['error']}"
 
-    data = result.get("data", {})
+    data = result.get("data", [])
     if not data:
-        return f"✅ *{query}* tidak ditemukan di database leak."
+        return f"✅ *{query}* ga ditemukan di pastebin (PSBDMP)."
 
-    found = data.get("found", 0)
-    sources = data.get("sources", [])
-    fields = data.get("fields", [])
-    result_list = data.get("result", [])
+    found = len(data)
 
-    if found == 0:
-        return f"✅ *{query}* tidak ditemukan di database leak."
-
-    text = f"🚨 *HASIL LEAKCHECK*\n\n"
+    text = f"🚨 *HASIL PSBDMP*\n\n"
     text += f"📧 *Query:* `{query}`\n"
-    text += f"📊 *Ditemukan di:* `{found}` breach\n\n"
+    text += f"📊 *Ditemukan di:* `{found}` paste\n\n"
 
-    if sources:
-        text += f"*Sumber Breach:*\n"
-        for src in sources[:15]:
-            if isinstance(src, dict):
-                name = src.get("name", "Unknown")
-                date = src.get("date", "")
-                text += f"  • `{name}`"
-                if date:
-                    text += f" ({date})"
-                text += "\n"
-            else:
-                text += f"  • `{src}`\n"
-        if len(sources) > 15:
-            text += f"  _... dan {len(sources)-15} sumber lainnya_\n"
-        text += "\n"
+    text += f"*Daftar Paste:*\n"
+    for i, entry in enumerate(data[:10], 1):
+        if isinstance(entry, dict):
+            paste_id = entry.get("id", "unknown")
+            paste_time = entry.get("time", "")
+            paste_text = entry.get("text", "")
+            paste_tags = entry.get("tags", [])
 
-    if fields:
-        text += f"*Data yang bocor:* `{', '.join(fields)}`\n\n"
+            # Preview text (max 100 char)
+            preview = paste_text[:100].replace("\n", " ").replace("`", "")
+            if len(paste_text) > 100:
+                preview += "..."
 
-    if result_list:
-        text += f"*Detail (max 10):*\n"
-        for entry in result_list[:10]:
-            if isinstance(entry, dict):
-                parts = []
-                for k in ["email", "username", "password", "name", "phone", "hash", "ip"]:
-                    if entry.get(k):
-                        parts.append(f"{k}=`{entry[k]}`")
-                if parts:
-                    text += f"  • " + " | ".join(parts) + "\n"
-        if len(result_list) > 10:
-            text += f"  _... dan {len(result_list)-10} entry lainnya_\n"
-        text += "\n"
+            text += f"\n*{i}.* `{paste_id}`\n"
+            if paste_time:
+                text += f"   📅 `{paste_time}`\n"
+            if paste_tags:
+                text += f"   🏷️ `{', '.join(paste_tags[:3])}`\n"
+            if preview:
+                text += f"   📝 _{preview}_\n"
+            text += f"   🔗 `https://pastebin.com/{paste_id}`\n"
 
-    text += f"🔒 _Buat edukasi. Jangan disalahgunain._"
+    if found > 10:
+        text += f"\n_... dan {found - 10} paste lainnya_\n"
+
+    text += f"\n🔒 _Buat edukasi. Jangan disalahgunain._"
     return text
