@@ -7,3 +7,4 @@ phonenumbers
 holehe
 httpx
 cachetools
+Pillow
