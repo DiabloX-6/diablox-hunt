@@ -45,7 +45,7 @@ from modules.osint_extra import (
 # === LEAK AGGREGATOR ===
 from modules.leak_agg import run_leak_scan, load_leak_results
 
-# === LEAKCHECK API ===
+# === LEAKCHECK API (PASTE SEARCH) ===
 from modules.leakcheck_api import check_leakcheck, format_leakcheck_result
 
 from database import (
@@ -63,7 +63,7 @@ NAMA_BOT = "DiabloXhunt"
 NAMA_OWNER = "Naddd"
 OWNER_USERNAME = "ZerooTwo2"
 OWNER_ID = 5728930563
-VERSION = "2.9"
+VERSION = "3.0"
 BANNER_URL = os.getenv("BANNER_URL", "https://i.imgur.com/pp1gIFY.jpeg")
 # =================================================
 
@@ -71,6 +71,10 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("telegram.ext.Updater").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 
@@ -80,10 +84,7 @@ def owner_link() -> str:
 
 def owner_button() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(
-            f"💬 Chat Owner @{OWNER_USERNAME}",
-            url=f"https://t.me/{OWNER_USERNAME}"
-        )]
+        [InlineKeyboardButton(f"💬 Chat Owner @{OWNER_USERNAME}", url=f"https://t.me/{OWNER_USERNAME}")]
     ])
 
 
@@ -128,7 +129,6 @@ def cek_akses(uid):
 
 
 def cek_akses_osint(uid):
-    """Akses OSINT: owner, paket pro, atau lifetime."""
     if is_owner_uid(uid):
         return True, ""
     status, pesan = cek_akses(uid)
@@ -183,14 +183,10 @@ def summary_text(findings) -> str:
 
 async def safe_edit(query, caption, keyboard=None):
     try:
-        await query.edit_message_caption(
-            caption=caption, parse_mode="Markdown", reply_markup=keyboard
-        )
+        await query.edit_message_caption(caption=caption, parse_mode="Markdown", reply_markup=keyboard)
     except Exception:
         try:
-            await query.edit_message_text(
-                caption, parse_mode="Markdown", reply_markup=keyboard
-            )
+            await query.edit_message_text(caption, parse_mode="Markdown", reply_markup=keyboard)
         except Exception as e:
             logger.warning(f"safe_edit gagal: {e}")
 
@@ -208,10 +204,8 @@ def main_menu_keyboard(uid):
         [InlineKeyboardButton("🧰 Tools & Utility", callback_data="menu_tools")],
     ])
     keyboard.extend([
-        [
-            InlineKeyboardButton("👤 Akun Saya", callback_data="menu_akun"),
-            InlineKeyboardButton("💎 Paket", callback_data="menu_paket"),
-        ],
+        [InlineKeyboardButton("👤 Akun Saya", callback_data="menu_akun"),
+         InlineKeyboardButton("💎 Paket", callback_data="menu_paket")],
         [InlineKeyboardButton(f"💬 Chat Owner @{OWNER_USERNAME}", url=f"https://t.me/{OWNER_USERNAME}")],
     ])
     return InlineKeyboardMarkup(keyboard)
@@ -261,11 +255,11 @@ def osint_menu_keyboard():
          InlineKeyboardButton("💬 Telegram", callback_data="osint_telegram")],
         [InlineKeyboardButton("🎯 PhoneTrack", callback_data="osint_phonetrack"),
          InlineKeyboardButton("📋 Pastebin", callback_data="osint_pastebin")],
-        [InlineKeyboardButton("🚨 LeakScan", callback_data="osint_leakscan")],
+        [InlineKeyboardButton("🚨 LeakScan", callback_data="osint_leakscan"),
+         InlineKeyboardButton("🚨 LeakCheck", callback_data="osint_leakcheck")],
         [InlineKeyboardButton("🖼 EXIF", callback_data="osint_exif"),
          InlineKeyboardButton("📜 SubHist", callback_data="osint_subhist")],
-        [InlineKeyboardButton("🔭 Shodan-D", callback_data="osint_shodand"),
-         InlineKeyboardButton("🚨 LeakCheck", callback_data="osint_leakcheck")],
+        [InlineKeyboardButton("🔭 Shodan-D", callback_data="osint_shodand")],
         [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
     ])
 
@@ -344,15 +338,11 @@ async def start(update, context):
         )
 
     try:
-        await update.message.reply_photo(
-            photo=BANNER_URL, caption=caption,
-            parse_mode="Markdown",
-            reply_markup=main_menu_keyboard(uid)
-        )
+        await update.message.reply_photo(photo=BANNER_URL, caption=caption,
+                                         parse_mode="Markdown", reply_markup=main_menu_keyboard(uid))
     except Exception as e:
         logger.error(f"Banner error: {e}")
-        await update.message.reply_text(caption, parse_mode="Markdown",
-                                         reply_markup=main_menu_keyboard(uid))
+        await update.message.reply_text(caption, parse_mode="Markdown", reply_markup=main_menu_keyboard(uid))
 
 
 async def myaccount_cmd(update, context):
@@ -366,21 +356,15 @@ async def myaccount_cmd(update, context):
     user = get_user(uid)
     hari = sisa_hari(uid)
     await update.message.reply_text(
-        f"👤 *AKUN SAYA*\n\n"
-        f"🆔 `{user['id']}`\n"
-        f"📛 *{user['nama']}*\n"
-        f"📦 `{user['paket'].upper()}`\n"
-        f"⏳ *{hari} hari*\n"
-        f"🚦 `{user['status'].upper()}`",
-        parse_mode="Markdown", reply_markup=owner_button()
-    )
+        f"👤 *AKUN SAYA*\n\n🆔 `{user['id']}`\n📛 *{user['nama']}*\n"
+        f"📦 `{user['paket'].upper()}`\n⏳ *{hari} hari*\n🚦 `{user['status'].upper()}`",
+        parse_mode="Markdown", reply_markup=owner_button())
 
 
 async def paket_cmd(update, context):
     paket = get_paket_list()
     text = "💎 *DAFTAR PAKET*\n\n"
-    emoji_map = {"trial": "🎁", "basic": "🥉", "premium": "🥈",
-                 "pro": "🥇", "lifetime": "👑"}
+    emoji_map = {"trial": "🎁", "basic": "🥉", "premium": "🥈", "pro": "🥇", "lifetime": "👑"}
     for nama, info in paket.items():
         harga = "GRATIS" if info["harga"] == 0 else f"Rp {info['harga']:,}".replace(",", ".")
         text += f"{emoji_map.get(nama, '📦')} *{nama.upper()}* — {info['durasi']}h — *{harga}*\n"
@@ -390,12 +374,8 @@ async def paket_cmd(update, context):
 
 async def owner_cmd(update, context):
     await update.message.reply_text(
-        f"👑 *OWNER INFO*\n\n"
-        f"📛 *{NAMA_OWNER}*\n"
-        f"💬 @{OWNER_USERNAME}\n"
-        f"📌 v{VERSION}",
-        parse_mode="Markdown", reply_markup=owner_button()
-    )
+        f"👑 *OWNER INFO*\n\n📛 *{NAMA_OWNER}*\n💬 @{OWNER_USERNAME}\n📌 v{VERSION}",
+        parse_mode="Markdown", reply_markup=owner_button())
 
 
 # ================== CALLBACK ==================
@@ -420,44 +400,26 @@ async def menu_callback(update, context):
 
     if data == "menu_main":
         if is_owner_uid(uid):
-            caption = (
-                header("OWNER ACCESS", "👑") +
-                f"👑 *{NAMA_OWNER}*\n"
-                f"📡 🟢 `ONLINE`\n"
-                f"👥 `{user_count()}`\n"
-                f"🔧 `v{VERSION}`\n\n"
-                "✨ *Pilih menu:*"
-            )
+            caption = (header("OWNER ACCESS", "👑") + f"👑 *{NAMA_OWNER}*\n"
+                       f"📡 🟢 `ONLINE`\n👥 `{user_count()}`\n🔧 `v{VERSION}`\n\n✨ *Pilih menu:*")
         else:
-            caption = (
-                header("DIABLOX HUNT", "🛡️") +
-                f"👋 Halo, *{user['nama']}*!\n\n"
-                f"📦 `{user['paket'].upper()}`\n"
-                f"⏰ `{hari} hari`\n"
-                f"🚦 🟢 `ACTIVE`\n\n"
-                "✨ *Pilih menu:*"
-            )
+            caption = (header("DIABLOX HUNT", "🛡️") + f"👋 Halo, *{user['nama']}*!\n\n"
+                       f"📦 `{user['paket'].upper()}`\n⏰ `{hari} hari`\n🚦 🟢 `ACTIVE`\n\n✨ *Pilih menu:*")
         await safe_edit(query, caption, main_menu_keyboard(uid))
         return
 
     if data == "menu_recon":
-        await safe_edit(query,
-            header("RECON TOOLS", "🔍") +
-            "🌐 DNS  🔎 Subdomain\n📋 WHOIS  🌍 IP\n"
-            "🔒 SSL  🔧 Tech\n🛡️ WAF  🔭 Shodan\n"
-            "🕵️ Dork  📡 AXFR\n🔄 Reverse DNS",
-            recon_menu_keyboard())
+        await safe_edit(query, header("RECON TOOLS", "🔍") +
+            "🌐 DNS  🔎 Subdomain\n📋 WHOIS  🌍 IP\n🔒 SSL  🔧 Tech\n"
+            "🛡️ WAF  🔭 Shodan\n🕵️ Dork  📡 AXFR\n🔄 Reverse DNS", recon_menu_keyboard())
         return
 
     if data == "menu_vuln":
         if not is_owner_uid(uid) and user and user["fitur"] == "recon":
             await query.answer("🔒 Paket BASIC hanya Recon!", show_alert=True)
             return
-        await safe_edit(query,
-            header("VULN SCANNER", "💥") +
-            "🚀 Full Scan  💉 SQLi  🎯 XSS\n"
-            "📂 LFI  🌐 SSRF  🔀 Redirect\n"
-            "🔓 CORS  ⚙️ Methods  📁 Dir",
+        await safe_edit(query, header("VULN SCANNER", "💥") +
+            "🚀 Full Scan  💉 SQLi  🎯 XSS\n📂 LFI  🌐 SSRF  🔀 Redirect\n🔓 CORS  ⚙️ Methods  📁 Dir",
             vuln_menu_keyboard())
         return
 
@@ -466,38 +428,24 @@ async def menu_callback(update, context):
         if not ok:
             await safe_edit(query, msg, owner_button())
             return
-        await safe_edit(query,
-            header("OSINT TOOLS", "🕵️") +
-            "📱 Phone  📧 Email\n"
-            "👤 Username  🌍 IP\n"
-            "🆔 NIK  🏦 Rekening\n"
-            "📸 Instagram  💬 Telegram\n"
-            "🎯 PhoneTrack  📋 Pastebin\n"
-            "🚨 LeakScan  🖼 EXIF\n"
-            "📜 SubHist  🔭 Shodan-D\n"
-            "🚨 LeakCheck\n\n"
-            "🔒 _Khusus paket PRO / LIFETIME_",
-            osint_menu_keyboard())
+        await safe_edit(query, header("OSINT TOOLS", "🕵️") +
+            "📱 Phone  📧 Email\n👤 Username  🌍 IP\n🆔 NIK  🏦 Rekening\n"
+            "📸 Instagram  💬 Telegram\n🎯 PhoneTrack  📋 Pastebin\n"
+            "🚨 LeakScan  🚨 LeakCheck\n🖼 EXIF  📜 SubHist\n🔭 Shodan-D\n\n"
+            "🔒 _Khusus paket PRO / LIFETIME_", osint_menu_keyboard())
         return
 
     if data == "menu_tools":
-        await safe_edit(query,
-            header("TOOLS", "🧰") +
-            "🔐 Base64 Encode  🔓 Base64 Decode\n"
-            "#️⃣ Hash  🎫 JWT Decode",
-            tools_menu_keyboard())
+        await safe_edit(query, header("TOOLS", "🧰") +
+            "🔐 Base64 Encode  🔓 Base64 Decode\n#️⃣ Hash  🎫 JWT Decode", tools_menu_keyboard())
         return
 
     if data == "menu_owner":
         if not is_owner_uid(uid):
             await query.answer("❌ Owner only!", show_alert=True)
             return
-        await safe_edit(query,
-            header("OWNER PANEL", "👑") +
-            f"📊 Total User: `{user_count()}`\n\n"
-            "➕ Add  ➖ Remove  ⏱️ Extend\n"
-            "🚫 Ban  ✅ Unban  📋 List\n"
-            "🔍 Info  🔄 Cek Expired",
+        await safe_edit(query, header("OWNER PANEL", "👑") + f"📊 Total User: `{user_count()}`\n\n"
+            "➕ Add  ➖ Remove  ⏱️ Extend\n🚫 Ban  ✅ Unban  📋 List\n🔍 Info  🔄 Cek Expired",
             owner_menu_keyboard())
         return
 
@@ -505,13 +453,9 @@ async def menu_callback(update, context):
         if is_owner_uid(uid):
             await query.answer("👑 Kamu owner!", show_alert=True)
             return
-        await safe_edit(query,
-            header("AKUN SAYA", "👤") +
-            f"🆔 `{user['id']}`\n"
-            f"📛 *{user['nama']}*\n"
-            f"📦 `{user['paket'].upper()}`\n"
-            f"⏳ *{hari} hari*\n"
-            f"🚦 `{user['status'].upper()}`",
+        await safe_edit(query, header("AKUN SAYA", "👤") +
+            f"🆔 `{user['id']}`\n📛 *{user['nama']}*\n📦 `{user['paket'].upper()}`\n"
+            f"⏳ *{hari} hari*\n🚦 `{user['status'].upper()}`",
             InlineKeyboardMarkup([
                 [InlineKeyboardButton("🎁 My Referral", callback_data="menu_myref")],
                 [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
@@ -520,21 +464,15 @@ async def menu_callback(update, context):
 
     if data == "menu_myref":
         stats = get_ref_stats(uid) or {"code": "-", "count": 0, "history": []}
-        await safe_edit(query,
-            header("REFERRAL", "🎁") +
-            f"🎫 `{stats['code']}`\n\n"
-            f"📊 Total: *{stats['count']}*\n"
-            f"🎁 Bonus: *+7 hari*",
-            InlineKeyboardMarkup([
-                [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_akun")],
-            ]))
+        await safe_edit(query, header("REFERRAL", "🎁") +
+            f"🎫 `{stats['code']}`\n\n📊 Total: *{stats['count']}*\n🎁 Bonus: *+7 hari*",
+            InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_akun")]]))
         return
 
     if data == "menu_paket":
         paket = get_paket_list()
         caption = header("DAFTAR PAKET", "💎")
-        emoji_map = {"trial": "🎁", "basic": "🥉", "premium": "🥈",
-                     "pro": "🥇", "lifetime": "👑"}
+        emoji_map = {"trial": "🎁", "basic": "🥉", "premium": "🥈", "pro": "🥇", "lifetime": "👑"}
         for nama, info in paket.items():
             harga = "GRATIS" if info["harga"] == 0 else f"Rp {info['harga']:,}".replace(",", ".")
             caption += f"{emoji_map.get(nama, '📦')} *{nama.upper()}* — {info['durasi']}h — *{harga}*\n"
@@ -542,82 +480,93 @@ async def menu_callback(update, context):
         await safe_edit(query, caption, paket_keyboard())
         return
 
+    # ==================== PROMPTS ====================
     prompts = {
-        "recon_dns": "🌐 `/dns example.com`",
-        "recon_sub": "🔎 `/sub example.com`",
-        "recon_whois": "📋 `/whois example.com`",
-        "recon_ip": "🌍 `/ip 8.8.8.8`",
-        "recon_ssl": "🔒 `/ssl example.com`",
-        "recon_tech": "🔧 `/tech https://example.com`",
-        "recon_waf": "🛡️ `/waf https://example.com`",
-        "recon_shodan": "🔭 `/shodan 8.8.8.8`",
-        "recon_dork": "🕵️ `/dork example.com`",
-        "recon_axfr": "📡 `/axfr example.com`",
-        "recon_rev": "🔄 `/rev 8.8.8.8`",
-        "vuln_scan": "🚀 `/scan example.com`",
-        "vuln_sqli": "💉 `/sqli <url>`",
-        "vuln_xss": "🎯 `/xss <url>`",
-        "vuln_lfi": "📂 `/lfi <url>`",
-        "vuln_ssrf": "🌐 `/ssrf <url>`",
-        "vuln_redirect": "🔀 `/redirect <url>`",
-        "vuln_cors": "🔓 `/cors <url>`",
-        "vuln_methods": "⚙️ `/methods <url>`",
-        "vuln_dir": "📁 `/dir <url>`",
-        "tools_base64e": "🔐 `/base64e hello`",
-        "tools_base64d": "🔓 `/base64d aGVsbG8=`",
-        "tools_hash": "#️⃣ `/hash hello`",
-        "tools_jwt": "🎫 `/jwt <token>`",
-        "osint_phone": "📱 `/phone 628123456789`",
-        "osint_email": "📧 `/email target@gmail.com`",
-        "osint_username": "👤 `/username johndoe`",
-        "osint_ip": "🌍 `/ipinfo 8.8.8.8`",
-        "osint_nik": "🆔 `/nik 3201234567890001`",
-        "osint_rekening": "🏦 `/rek 1234567890`",
-        "osint_instagram": "📸 `/ig johndoe`",
-        "osint_telegram": "💬 `/tg johndoe`",
-        "osint_phonetrack": "🎯 `/phonetrack 628123456789`",
-        "osint_pastebin":   "📋 `/pastebin example.com`",
-        "osint_exif":       "🖼 `/exif https://i.imgur.com/xxx.jpg`",
-        "osint_subhist":    "📜 `/subhist example.com`",
-        "osint_shodand":    "🔭 `/shodand example.com`",
-        "osint_leakcheck":  "🚨 `/leakcheck <email>`\n"
-                            "Contoh:\n"
-                            "`/leakcheck budi@gmail.com`\n"
-                            "`/leakcheck username:budisantoso`\n"
-                            "`/leakcheck phone:628123456789`",
-        "osint_leakscan":   "🚨 `/leakscan [threads] [mode]`\n"
-                            "Mode: `loose` / `medium` / `strict`\n"
-                            "Contoh:\n"
-                            "`/leakscan 30` — medium (default)\n"
-                            "`/leakscan 30 loose` — longgar\n"
-                            "`/leakscan 30 strict` — galak",
-        "owner_adduser": "➕ `/adduser <id> <nama> <paket>`",
-        "owner_removeuser": "➖ `/removeuser <id>`",
-        "owner_extend": "⏱️ `/extend <id> <hari>`",
-        "owner_ban": "🚫 `/ban <id>`",
-        "owner_unban": "✅ `/unban <id>`",
-        "owner_listuser": "📋 `/listuser`",
-        "owner_userinfo": "🔍 `/userinfo <id>`",
-        "owner_cekexpired": "🔄 `/cekexpired`",
+        "recon_dns": "🌐 *DNS LOOKUP*\n\nCek DNS record domain.\n\n📝 *Usage:*\n`/dns <domain>`\n\n💡 *Contoh:*\n`/dns google.com`",
+        "recon_sub": "🔎 *SUBDOMAIN SCAN*\n\nCari subdomain.\n\n📝 *Usage:*\n`/sub <domain>`\n\n💡 *Contoh:*\n`/sub google.com`",
+        "recon_whois": "📋 *WHOIS LOOKUP*\n\nCek whois domain.\n\n📝 *Usage:*\n`/whois <domain>`\n\n💡 *Contoh:*\n`/whois google.com`",
+        "recon_ip": "🌍 *IP LOOKUP*\n\nCek info IP/domain.\n\n📝 *Usage:*\n`/ip <ip/domain>`\n\n💡 *Contoh:*\n`/ip 8.8.8.8`",
+        "recon_ssl": "🔒 *SSL INFO*\n\nCek SSL certificate.\n\n📝 *Usage:*\n`/ssl <domain>`\n\n💡 *Contoh:*\n`/ssl google.com`",
+        "recon_tech": "🔧 *TECH DETECT*\n\nDeteksi teknologi website.\n\n📝 *Usage:*\n`/tech <url>`\n\n💡 *Contoh:*\n`/tech https://google.com`",
+        "recon_waf": "🛡️ *WAF DETECT*\n\nDeteksi WAF.\n\n📝 *Usage:*\n`/waf <url>`\n\n💡 *Contoh:*\n`/waf https://cloudflare.com`",
+        "recon_shodan": "🔭 *SHODAN LOOKUP*\n\nCek port terbuka.\n\n📝 *Usage:*\n`/shodan <ip>`\n\n💡 *Contoh:*\n`/shodan 8.8.8.8`",
+        "recon_dork": "🕵️ *DORK SEARCH*\n\nGenerate Google dork.\n\n📝 *Usage:*\n`/dork <domain>`\n\n💡 *Contoh:*\n`/dork example.com`",
+        "recon_axfr": "📡 *ZONE TRANSFER*\n\nCek AXFR vulnerability.\n\n📝 *Usage:*\n`/axfr <domain>`\n\n💡 *Contoh:*\n`/axfr example.com`",
+        "recon_rev": "🔄 *REVERSE DNS*\n\nCek PTR record.\n\n📝 *Usage:*\n`/rev <ip>`\n\n💡 *Contoh:*\n`/rev 8.8.8.8`",
+        "vuln_scan": "🚀 *FULL VULN SCAN*\n\nScan menyeluruh.\n\n📝 *Usage:*\n`/scan <url>`\n\n💡 *Contoh:*\n`/scan example.com`\n\n⏱️ 1-3 menit",
+        "vuln_sqli": "💉 *SQL INJECTION TEST*\n\nTest SQLi.\n\n📝 *Usage:*\n`/sqli <url>`\n\n💡 *Contoh:*\n`/sqli https://example.com/page?id=1`",
+        "vuln_xss": "🎯 *XSS TEST*\n\nTest XSS.\n\n📝 *Usage:*\n`/xss <url>`\n\n💡 *Contoh:*\n`/xss https://example.com/search?q=test`",
+        "vuln_lfi": "📂 *LFI TEST*\n\nTest LFI.\n\n📝 *Usage:*\n`/lfi <url>`\n\n💡 *Contoh:*\n`/lfi https://example.com/page?file=index`",
+        "vuln_ssrf": "🌐 *SSRF TEST*\n\nTest SSRF.\n\n📝 *Usage:*\n`/ssrf <url>`",
+        "vuln_redirect": "🔀 *OPEN REDIRECT TEST*\n\nTest open redirect.\n\n📝 *Usage:*\n`/redirect <url>`",
+        "vuln_cors": "🔓 *CORS MISCONFIG*\n\nCek CORS misconfig.\n\n📝 *Usage:*\n`/cors <url>`",
+        "vuln_methods": "⚙️ *HTTP METHODS*\n\nTest HTTP methods.\n\n📝 *Usage:*\n`/methods <url>`",
+        "vuln_dir": "📁 *DIRECTORY BRUTEFORCE*\n\nCari directory.\n\n📝 *Usage:*\n`/dir <url>`",
+        "tools_base64e": "🔐 *BASE64 ENCODE*\n\nEncode ke Base64.\n\n📝 *Usage:*\n`/base64e <teks>`\n\n💡 *Contoh:*\n`/base64e hello world`",
+        "tools_base64d": "🔓 *BASE64 DECODE*\n\nDecode Base64.\n\n📝 *Usage:*\n`/base64d <base64>`\n\n💡 *Contoh:*\n`/base64d aGVsbG8=`",
+        "tools_hash": "#️⃣ *HASH GENERATOR*\n\nMD5/SHA1/SHA256.\n\n📝 *Usage:*\n`/hash <teks>`\n\n💡 *Contoh:*\n`/hash hello`",
+        "tools_jwt": "🎫 *JWT DECODER*\n\nDecode JWT.\n\n📝 *Usage:*\n`/jwt <token>`",
+        "osint_phone": "📱 *PHONE LOOKUP*\n\nCek nomor HP.\n\n📝 *Usage:*\n`/phone <nomor>`\n\n💡 *Contoh:*\n`/phone 628123456789`",
+        "osint_email": "📧 *EMAIL LOOKUP*\n\nCek email.\n\n📝 *Usage:*\n`/email <email>`\n\n💡 *Contoh:*\n`/email target@gmail.com`",
+        "osint_username": "👤 *USERNAME LOOKUP*\n\nCek username.\n\n📝 *Usage:*\n`/username <username>`\n\n💡 *Contoh:*\n`/username johndoe`",
+        "osint_ip": "🌍 *IP INFORMATION*\n\nCek IP.\n\n📝 *Usage:*\n`/ipinfo <ip>`\n\n💡 *Contoh:*\n`/ipinfo 8.8.8.8`",
+        "osint_nik": "🆔 *NIK LOOKUP*\n\nCek NIK Indonesia.\n\n📝 *Usage:*\n`/nik <nik>`\n\n💡 *Contoh:*\n`/nik 3201234567890001`",
+        "osint_rekening": "🏦 *REKENING LOOKUP*\n\nCek rekening.\n\n📝 *Usage:*\n`/rek <nomor>`\n\n💡 *Contoh:*\n`/rek 1234567890`",
+        "osint_instagram": "📸 *INSTAGRAM LOOKUP*\n\nCek IG.\n\n📝 *Usage:*\n`/ig <username>`\n\n💡 *Contoh:*\n`/ig johndoe`",
+        "osint_telegram": "💬 *TELEGRAM LOOKUP*\n\nCek Telegram.\n\n📝 *Usage:*\n`/tg <username>`\n\n💡 *Contoh:*\n`/tg johndoe`",
+        "osint_phonetrack": "🎯 *PHONETRACK*\n\nTrack nomor HP.\n\n📝 *Usage:*\n`/phonetrack <nomor>`\n\n💡 *Contoh:*\n`/phonetrack 628123456789`",
+        "osint_pastebin": "📋 *PASTEBIN SEARCH*\n\nCari domain di pastebin.\n\n📝 *Usage:*\n`/pastebin <domain>`\n\n💡 *Contoh:*\n`/pastebin example.com`",
+        "osint_exif": "🖼 *EXIF EXTRACTOR*\n\nExtract EXIF dari gambar.\n\n📝 *Usage:*\n`/exif <url_gambar>`\n\n💡 *Contoh:*\n`/exif https://i.imgur.com/xxx.jpg`",
+        "osint_subhist": "📜 *SUBDOMAIN HISTORY*\n\nCek history subdomain.\n\n📝 *Usage:*\n`/subhist <domain>`\n\n💡 *Contoh:*\n`/subhist example.com`",
+        "osint_shodand": "🔭 *SHODAN DOMAIN*\n\nCek domain di Shodan.\n\n📝 *Usage:*\n`/shodand <domain>`\n\n💡 *Contoh:*\n`/shodand example.com`",
+        "osint_leakcheck": (
+            "🚨 *PASTE SEARCH*\n\n"
+            "Cari email/username di database paste lokal.\n\n"
+            "📝 *Usage:*\n"
+            "`/leakcheck <query>`\n\n"
+            "💡 *Contoh:*\n"
+            "`/leakcheck budi@gmail.com`\n"
+            "`/leakcheck budisantoso`\n"
+            "`/leakcheck 628123456789`\n\n"
+            "_Database auto-update tiap 10 menit._"
+        ),
+        "osint_leakscan": (
+            "🚨 *LEAK SCANNER*\n\n"
+            "Scan pastebin buat cari data leak.\n\n"
+            "📝 *Usage:*\n"
+            "`/leakscan [threads] [mode]`\n\n"
+            "🎯 *Mode:*\n"
+            "🟢 `loose` — longgar\n"
+            "🟡 `medium` — balance (default)\n"
+            "🔴 `strict` — galak\n\n"
+            "💡 *Contoh:*\n"
+            "`/leakscan 30`\n"
+            "`/leakscan 30 loose`\n"
+            "`/leakscan 30 strict`"
+        ),
+        "owner_adduser": "➕ *ADD USER*\n\n📝 *Usage:*\n`/adduser <id> <nama> <paket>`\n\n💡 *Contoh:*\n`/adduser 123456789 budi pro`",
+        "owner_removeuser": "➖ *REMOVE USER*\n\n📝 *Usage:*\n`/removeuser <id>`",
+        "owner_extend": "⏱️ *EXTEND USER*\n\n📝 *Usage:*\n`/extend <id> <hari>`\n\n💡 *Contoh:*\n`/extend 123456789 30`",
+        "owner_ban": "🚫 *BAN USER*\n\n📝 *Usage:*\n`/ban <id>`",
+        "owner_unban": "✅ *UNBAN USER*\n\n📝 *Usage:*\n`/unban <id>`",
+        "owner_listuser": "📋 *LIST USER*\n\n📝 *Usage:*\n`/listuser`",
+        "owner_userinfo": "🔍 *USER INFO*\n\n📝 *Usage:*\n`/userinfo <id>`",
+        "owner_cekexpired": "🔄 *CEK EXPIRED*\n\n📝 *Usage:*\n`/cekexpired`",
     }
 
     if data in prompts:
         await safe_edit(query,
-            f"📝 *PROMPT*\n\n{prompts[data]}\n\n_Ketik perintah di chat._",
-            InlineKeyboardMarkup([
-                [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
-            ]))
+            f"📝 *PROMPT*\n\n{prompts[data]}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"_Ketik perintah di chat._",
+            InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")]]))
         return
 
     if data.startswith("buy_"):
         paket_nama = data.replace("buy_", "")
         paket = get_paket_list().get(paket_nama, {})
         harga = "GRATIS" if paket.get("harga") == 0 else f"Rp {paket.get('harga', 0):,}".replace(",", ".")
-        await safe_edit(query,
-            header("BELI PAKET", "💎") +
-            f"📦 *{paket_nama.upper()}*\n"
-            f"💰 *{harga}*\n\n"
-            f"📞 {owner_link()}",
+        await safe_edit(query, header("BELI PAKET", "💎") + f"📦 *{paket_nama.upper()}*\n💰 *{harga}*\n\n📞 {owner_link()}",
             InlineKeyboardMarkup([
                 [InlineKeyboardButton(f"💬 Chat Owner @{OWNER_USERNAME}", url=f"https://t.me/{OWNER_USERNAME}")],
                 [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_paket")],
@@ -641,7 +590,7 @@ async def adduser_cmd(update, context):
 async def removeuser_cmd(update, context):
     uid = update.effective_user.id
     if not is_owner_uid(uid): return
-    if not context.args: await update.message.reply_text("❌ `/removeuser <id>`", parse_mode="Markdown"); return
+    if not context.args: return
     try: target_id = int(context.args[0])
     except: return
     ok, msg = remove_user(target_id)
@@ -651,7 +600,7 @@ async def removeuser_cmd(update, context):
 async def extend_cmd(update, context):
     uid = update.effective_user.id
     if not is_owner_uid(uid): return
-    if len(context.args) < 2: await update.message.reply_text("❌ `/extend <id> <hari>`", parse_mode="Markdown"); return
+    if len(context.args) < 2: return
     try: target_id = int(context.args[0]); hari = int(context.args[1])
     except: return
     ok, msg = extend_user(target_id, hari)
@@ -702,12 +651,8 @@ async def userinfo_cmd(update, context):
     if not user: await update.message.reply_text("❌ Gak ada"); return
     hari = sisa_hari(target_id)
     await update.message.reply_text(
-        f"👤 *{user['nama']}*\n"
-        f"🆔 `{target_id}`\n"
-        f"📦 `{user['paket'].upper()}`\n"
-        f"⏳ *{hari} hari*\n"
-        f"🚦 `{user['status'].upper()}`",
-        parse_mode="Markdown")
+        f"👤 *{user['nama']}*\n🆔 `{target_id}`\n📦 `{user['paket'].upper()}`\n"
+        f"⏳ *{hari} hari*\n🚦 `{user['status'].upper()}`", parse_mode="Markdown")
 
 
 async def setowner_cmd(update, context):
@@ -732,9 +677,8 @@ async def myref_cmd(update, context):
             await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
         stats = get_ref_stats(uid)
         if not stats: return
-    await update.message.reply_text(
-        f"🎁 *REFERRAL*\n\n🎫 `{stats['code']}`\n📊 Total: *{stats['count']}*",
-        parse_mode="Markdown", reply_markup=owner_button())
+    await update.message.reply_text(f"🎁 *REFERRAL*\n\n🎫 `{stats['code']}`\n📊 Total: *{stats['count']}*",
+                                    parse_mode="Markdown", reply_markup=owner_button())
 
 
 async def topref_cmd(update, context):
@@ -772,19 +716,22 @@ async def cek_expired_job(context):
         for uid, user in get_users_expiring(3):
             if is_notified(uid, "h3"): continue
             try:
-                await context.bot.send_message(int(uid), f"⏰ *{user['nama']}*, expired 3 hari lagi. {owner_link()}", parse_mode="Markdown", reply_markup=owner_button())
+                await context.bot.send_message(int(uid), f"⏰ *{user['nama']}*, expired 3 hari lagi. {owner_link()}",
+                                               parse_mode="Markdown", reply_markup=owner_button())
                 mark_notified(uid, "h3")
             except: pass
         for uid, user in get_users_expiring(1):
             if is_notified(uid, "h1"): continue
             try:
-                await context.bot.send_message(int(uid), f"⚠️ *{user['nama']}*, expired BESOK.", parse_mode="Markdown", reply_markup=owner_button())
+                await context.bot.send_message(int(uid), f"⚠️ *{user['nama']}*, expired BESOK.",
+                                               parse_mode="Markdown", reply_markup=owner_button())
                 mark_notified(uid, "h1")
             except: pass
         for uid, user in get_users_expired_today():
             if is_notified(uid, "exp"): continue
             try:
-                await context.bot.send_message(int(uid), f"🔴 *{user['nama']}*, sudah EXPIRED.", parse_mode="Markdown", reply_markup=owner_button())
+                await context.bot.send_message(int(uid), f"🔴 *{user['nama']}*, sudah EXPIRED.",
+                                               parse_mode="Markdown", reply_markup=owner_button())
                 mark_notified(uid, "exp")
             except: pass
     except Exception as e:
@@ -816,8 +763,7 @@ async def dns_cmd(update, context):
         for rtype, values in records.items():
             if values:
                 text += f"*{rtype}:*\n"
-                for v in values[:5]:
-                    text += f"  `{v}`\n"
+                for v in values[:5]: text += f"  `{v}`\n"
         await msg.edit_text(text[:4000], parse_mode="Markdown")
     except Exception as e:
         await msg.edit_text(f"❌ {e}")
@@ -829,7 +775,7 @@ async def sub_cmd(update, context):
     if status in ("unregistered", "banned", "expired"):
         await update.message.reply_text(pesan, parse_mode="Markdown", reply_markup=owner_button()); return
     domain = get_arg(context)
-    if not domain: await update.message.reply_text("❌ `/sub example.com`", parse_mode="Markdown"); return
+    if not domain: return
     msg = await update.message.reply_text(f"🔍 Subdomain `{domain}`...")
     try:
         subs = await asyncio.to_thread(subdomain_scan, domain)
@@ -1015,7 +961,7 @@ async def scan_cmd(update, context):
         if user and user["fitur"] == "recon":
             await update.message.reply_text("🔒 Basic hanya Recon.", reply_markup=owner_button()); return
     target = get_arg(context)
-    if not target: await update.message.reply_text("❌ `/scan example.com`", parse_mode="Markdown"); return
+    if not target: return
     url = normalize_url(target)
     domain = urlparse(url).hostname
     if not is_valid_domain(domain) or not resolve_domain(domain):
@@ -1055,7 +1001,7 @@ async def _quick_vuln(update, context, test_name, test_func):
         if user and user["fitur"] == "recon":
             await update.message.reply_text("🔒 Basic hanya Recon."); return
     url = get_arg(context)
-    if not url: await update.message.reply_text(f"❌ `/{test_name} <url>`", parse_mode="Markdown"); return
+    if not url: return
     url = normalize_url(url)
     msg = await update.message.reply_text(f"🔍 Test {test_name} `{url}`...")
     try:
@@ -1132,8 +1078,7 @@ async def _osint_run(update, context, fn, label, usage):
         result = await asyncio.to_thread(fn, arg)
     except Exception as e:
         result = f"❌ Error: {e}"
-    if len(result) > 4000:
-        result = result[:4000] + "\n..."
+    if len(result) > 4000: result = result[:4000] + "\n..."
     try:
         await m.edit_text(result, parse_mode="Markdown")
     except Exception:
@@ -1155,8 +1100,7 @@ async def _osint_run_async(update, context, afn, label, usage):
         result = await afn(arg)
     except Exception as e:
         result = f"❌ Error: {e}"
-    if len(result) > 4000:
-        result = result[:4000] + "\n..."
+    if len(result) > 4000: result = result[:4000] + "\n..."
     try:
         await m.edit_text(result, parse_mode="Markdown")
     except Exception:
@@ -1171,7 +1115,6 @@ async def osint_nik_cmd(u, c):        await _osint_run(u, c, scan_nik,          
 async def osint_rek_cmd(u, c):        await _osint_run(u, c, scan_rekening,      "Rekening", "/rek 1234567890")
 async def osint_ig_cmd(u, c):         await _osint_run(u, c, scan_ig,            "Instagram","/ig johndoe")
 async def osint_tg_cmd(u, c):         await _osint_run(u, c, scan_telegram,      "Telegram", "/tg johndoe")
-
 async def osint_phonetrack_cmd(u, c): await _osint_run_async(u, c, scan_phonetrack,        "PhoneTrack", "/phonetrack 628123456789")
 async def osint_pastebin_cmd(u, c):   await _osint_run_async(u, c, scan_pastebin,          "Pastebin",   "/pastebin example.com")
 async def osint_exif_cmd(u, c):       await _osint_run_async(u, c, scan_exif,              "EXIF",       "/exif https://i.imgur.com/x.jpg")
@@ -1191,7 +1134,6 @@ async def leakscan_cmd(update, context):
 
     threads = 20
     mode = "medium"
-
     if context.args:
         if context.args[0].isdigit():
             threads = int(context.args[0])
@@ -1209,14 +1151,9 @@ async def leakscan_cmd(update, context):
     }[mode]
 
     m = await update.message.reply_text(
-        f"🔍 *Leak Aggregator* dimulai...\n"
-        f"{mode_emoji} Mode: `{mode.upper()}`\n"
-        f"📝 _{mode_desc}_\n"
-        f"🧵 Thread: `{threads}`\n"
-        f"⏱️ Estimasi: 3-10 menit\n\n"
-        f"_Bot akan kirim hasil kalo udah selesai._",
-        parse_mode="Markdown"
-    )
+        f"🔍 *Leak Aggregator* dimulai...\n{mode_emoji} Mode: `{mode.upper()}`\n"
+        f"📝 _{mode_desc}_\n🧵 Thread: `{threads}`\n⏱️ Estimasi: 3-10 menit\n\n"
+        f"_Bot akan kirim hasil kalo udah selesai._", parse_mode="Markdown")
 
     try:
         result = await asyncio.to_thread(run_leak_scan, threads, mode)
@@ -1225,12 +1162,8 @@ async def leakscan_cmd(update, context):
         return
 
     if not result or not result.get("results"):
-        await m.edit_text(
-            f"✅ Selesai (mode `{mode.upper()}`), tapi gak ada data leak ditemukan.\n\n"
-            f"Coba pake mode lain:\n"
-            f"`/leakscan {threads} loose` — lebih longgar",
-            parse_mode="Markdown"
-        )
+        await m.edit_text(f"✅ Selesai (mode `{mode.upper()}`), tapi gak ada data leak ditemukan.\n\n"
+                          f"Coba pake mode lain:\n`/leakscan {threads} loose` — lebih longgar", parse_mode="Markdown")
         return
 
     data = result["results"]
@@ -1239,37 +1172,25 @@ async def leakscan_cmd(update, context):
         for k, v in r["findings"].items():
             total_patterns[k] = total_patterns.get(k, 0) + len(v)
 
-    text = (
-        f"✅ *LEAK SCAN SELESAI*\n\n"
-        f"{mode_emoji} Mode: `{mode.upper()}`\n"
-        f"📊 Sumber ditemukan: `{len(data)}`\n"
-        f"🧵 Thread: `{threads}`\n"
-        f"⏰ Waktu: `{result['time']}`\n\n"
-        f"*Pattern ditemukan:*\n"
-    )
+    text = (f"✅ *LEAK SCAN SELESAI*\n\n{mode_emoji} Mode: `{mode.upper()}`\n"
+            f"📊 Sumber ditemukan: `{len(data)}`\n🧵 Thread: `{threads}`\n"
+            f"⏰ Waktu: `{result['time']}`\n\n*Pattern ditemukan:*\n")
     for k, v in sorted(total_patterns.items(), key=lambda x: -x[1]):
         text += f"  • `{k}`: {v}\n"
 
-    text += (
-        f"\n💡 _Coba mode lain:_\n"
-        f"`/leakscan {threads} loose` — longgar\n"
-        f"`/leakscan {threads} strict` — galak"
-    )
+    text += f"\n💡 _Coba mode lain:_\n`/leakscan {threads} loose` — longgar\n`/leakscan {threads} strict` — galak"
 
     await m.edit_text(text[:4000], parse_mode="Markdown")
 
     try:
         with open(result["file"], "rb") as f:
-            await update.message.reply_document(
-                document=f,
-                filename=os.path.basename(result["file"]),
-                caption=f"📄 Mode {mode.upper()} - {len(data)} sumber"
-            )
+            await update.message.reply_document(document=f, filename=os.path.basename(result["file"]),
+                                                caption=f"📄 Mode {mode.upper()} - {len(data)} sumber")
     except Exception as e:
         logger.error(f"Kirim file leak: {e}")
 
 
-# ================== LEAKCHECK API ==================
+# ================== LEAKCHECK API (PASTE SEARCH) ==================
 
 async def leakcheck_cmd(update, context):
     uid = update.effective_user.id
@@ -1281,39 +1202,21 @@ async def leakcheck_cmd(update, context):
     if not context.args:
         await update.message.reply_text(
             "❌ *Usage:*\n"
-            "`/leakcheck <email>` — cek email\n"
-            "`/leakcheck username:<name>` — cek username\n"
-            "`/leakcheck phone:<nomor>` — cek nomor HP\n"
-            "`/leakcheck domain:<domain>` — cek domain\n\n"
-            "Contoh:\n"
+            "`/leakcheck <email>`\n"
+            "`/leakcheck <username>`\n"
+            "`/leakcheck <nomor>`\n\n"
+            "💡 *Contoh:*\n"
             "`/leakcheck budi@gmail.com`\n"
-            "`/leakcheck username:budisantoso`\n"
-            "`/leakcheck phone:628123456789`",
-            parse_mode="Markdown"
-        )
+            "`/leakcheck budisantoso`\n"
+            "`/leakcheck 628123456789`",
+            parse_mode="Markdown")
         return
 
     query = " ".join(context.args)
-    query_type = "email"
-
-    if query.startswith("username:"):
-        query = query.replace("username:", "").strip()
-        query_type = "username"
-    elif query.startswith("phone:"):
-        query = query.replace("phone:", "").strip()
-        query_type = "phone"
-    elif query.startswith("domain:"):
-        query = query.replace("domain:", "").strip()
-        query_type = "domain"
-
-    m = await update.message.reply_text(
-        f"🔍 *LeakCheck* — query: `{query}` (`{query_type}`)\n"
-        f"⏱️ Mohon tunggu...",
-        parse_mode="Markdown"
-    )
+    m = await update.message.reply_text(f"🔍 *Paste Search:* `{query}`\n⏱️ Mohon tunggu...", parse_mode="Markdown")
 
     try:
-        result = await asyncio.to_thread(check_leakcheck, query, query_type)
+        result = await asyncio.to_thread(check_leakcheck, query)
     except Exception as e:
         await m.edit_text(f"❌ Error: `{e}`", parse_mode="Markdown")
         return
@@ -1321,7 +1224,6 @@ async def leakcheck_cmd(update, context):
     text = format_leakcheck_result(query, result)
     if len(text) > 4000:
         text = text[:4000] + "\n..."
-
     try:
         await m.edit_text(text, parse_mode="Markdown")
     except Exception:
@@ -1361,9 +1263,7 @@ async def hash_cmd(update, context):
     text = " ".join(context.args) if context.args else ""
     if not text: return
     await update.message.reply_text(
-        f"*MD5:* `{hash_string(text, 'md5')}`\n"
-        f"*SHA1:* `{hash_string(text, 'sha1')}`\n"
-        f"*SHA256:* `{hash_string(text, 'sha256')}`",
+        f"*MD5:* `{hash_string(text, 'md5')}`\n*SHA1:* `{hash_string(text, 'sha1')}`\n*SHA256:* `{hash_string(text, 'sha256')}`",
         parse_mode="Markdown")
 
 
