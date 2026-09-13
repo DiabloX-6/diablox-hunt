@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # modules/leak_agg.py
-# Leak Aggregator - rotasi proxy + multithread
+# Leak Aggregator v2 - rotasi proxy + multithread + filter false positive
 # Requirements: pip install requests beautifulsoup4 lxml fake-useragent
 
 import os
@@ -10,7 +10,7 @@ import time
 import random
 import threading
 from queue import Queue
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 from datetime import datetime
 
 import requests
@@ -88,28 +88,79 @@ class ProxyRotator:
                 self.failed.add(v)
 
 
+# ============ PATTERN DETEKSI (LEBIH KETAT) ============
 PATTERNS = {
-    "email": r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+",
-    "password": r"(?i)(password|passwd|pwd|pass)[\s:=]+([^\s]{4,})",
+    # Email: harus ada TLD valid, minimal 2 karakter
+    "email": r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b",
+
+    # Password: HANYA format user:pass atau password=value dengan value minimal 6 char
+    # dan ada minimal 1 angka atau simbol (biar bukan kata biasa)
+    "password": r"(?i)(?:password|passwd|pwd)\s*[:=]\s*['\"]?([a-zA-Z0-9!@#$%^&*_\-]{6,32})['\"]?",
+
+    # user:pass format (common di dump)
+    "user_pass": r"\b[a-zA-Z0-9._%+-]+:[a-zA-Z0-9!@#$%^&*_\-]{6,32}\b",
+
+    # Hash dengan format yang jelas
     "hash_md5": r"\b[a-fA-F0-9]{32}\b",
     "hash_sha1": r"\b[a-fA-F0-9]{40}\b",
     "hash_sha256": r"\b[a-fA-F0-9]{64}\b",
-    "credit_card": r"\b(?:\d[ -]*?){13,16}\b",
-    "ip_address": r"\b(?:\d{1,3}\.){3}\d{1,3}\b",
-    "btc_wallet": r"\b(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39}\b",
-    "private_key": r"-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
-    "api_key": r"(?i)(api[_-]?key|apikey|secret)[\s:=]+([a-zA-Z0-9_\-]{16,})",
+    "hash_bcrypt": r"\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}",
+
+    # Credit card: harus 13-19 digit, biasanya diawali 4/5/3/6
+    "credit_card": r"\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\b",
+
+    # IP: exclude private range dan localhost
+    "public_ip": r"\b(?!10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|127\.|0\.|255\.)(?:\d{1,3}\.){3}\d{1,3}\b",
+
+    # BTC wallet
+    "btc_wallet": r"\b(bc1[a-zA-HJ-NP-Z0-9]{25,39}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})\b",
+
+    # ETH wallet
+    "eth_wallet": r"\b0x[a-fA-F0-9]{40}\b",
+
+    # Private key
+    "private_key": r"-----BEGIN (RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----",
+
+    # API key: lebih spesifik, minimal 20 char
+    "api_key": r"(?i)(?:api[_-]?key|apikey|access[_-]?token|secret[_-]?key)\s*[:=]\s*['\"]?([a-zA-Z0-9_\-]{20,64})['\"]?",
+
+    # AWS credentials
+    "aws_key": r"\bAKIA[0-9A-Z]{16}\b",
+
+    # JWT token
+    "jwt": r"\beyJ[A-Za-z0-9_\-]+\.eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\b",
+
+    # Database connection string
+    "db_conn": r"(?i)(?:mysql|postgres|postgresql|mongodb|redis):\/\/[^\s]+:[^\s]+@[^\s]+",
+
+    # Telegram bot token
+    "tg_token": r"\b\d{8,10}:[a-zA-Z0-9_-]{35}\b",
 }
 
+# ============ SUMBER TARGET (FOKUS PASTE SITE) ============
 SOURCES = {
     "pastebin_archive": "https://pastebin.com/archive",
     "pastebin_trending": "https://pastebin.com/trends",
     "rentry": "https://rentry.co/",
-    "ghostbin": "https://ghostbin.com/",
     "dpaste": "https://dpaste.com/",
-    "hastebin": "https://hastebin.com/",
-    "controlc": "https://controlc.com/",
 }
+
+# ============ SKIP PATTERNS (URL yang ga relevan) ============
+SKIP_URL_KEYWORDS = [
+    "/help", "/about", "/faq", "/docs", "/documentation",
+    "/terms", "/privacy", "/contact", "/login", "/register",
+    "/signup", "/signin", "/pricing", "/blog", "/news",
+    "/cookie", "/legal", "/tos", "/dmca", "/report",
+    "/api/", "/static/", "/assets/", "/css/", "/js/",
+    ".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".svg",
+    ".ico", ".woff", ".woff2", ".ttf", ".map",
+]
+
+
+def should_skip_url(url):
+    """Skip URL yang ga relevan (halaman statis, dokumentasi, dll)."""
+    url_lower = url.lower()
+    return any(kw in url_lower for kw in SKIP_URL_KEYWORDS)
 
 
 def fetch(url, rotator, retry=MAX_RETRY):
@@ -157,10 +208,13 @@ def scrape_links(source_name, url, rotator):
             href = a["href"]
             if href.startswith("/") and len(href) > 2:
                 links.append(urljoin(base, href))
-    return list(set(links))[:100]
+    # Filter URL yang ga relevan
+    links = [l for l in set(links) if not should_skip_url(l)]
+    return links[:100]
 
 
 def extract_patterns(text):
+    """Extract pattern dengan filter false positive."""
     results = {}
     for name, pattern in PATTERNS.items():
         try:
@@ -172,6 +226,8 @@ def extract_patterns(text):
                         flat.extend([x for x in m if x])
                     else:
                         flat.append(m)
+                # Filter false positive umum
+                flat = [x for x in flat if not is_false_positive(name, x)]
                 flat = list(set(flat))[:50]
                 if flat:
                     results[name] = flat
@@ -180,23 +236,92 @@ def extract_patterns(text):
     return results
 
 
+def is_false_positive(pattern_name, value):
+    """Cek apakah value kemungkinan false positive."""
+    value_lower = value.lower() if isinstance(value, str) else ""
+
+    # Filter umum
+    blacklist = [
+        "example.com", "test.com", "localhost", "admin@admin.com",
+        "user@example.com", "email@example.com", "password123",
+        "changeme", "your_password", "yourpassword", "password_here",
+    ]
+    if any(b in value_lower for b in blacklist):
+        return True
+
+    # Email: harus ada TLD valid minimal 2 char
+    if pattern_name == "email":
+        if not re.match(r"^[^@]+@[^@]+\.[a-z]{2,}$", value_lower):
+            return True
+        # Skip email placeholder
+        if any(x in value_lower for x in ["noreply", "no-reply", "donotreply"]):
+            return True
+
+    # Password: skip kalo cuma kata umum
+    if pattern_name == "password":
+        common_words = ["password", "passwd", "pwd", "test", "admin", "user"]
+        if value_lower in common_words:
+            return True
+
+    # IP: skip private range (double check)
+    if pattern_name == "public_ip":
+        parts = value.split(".")
+        if len(parts) == 4:
+            try:
+                first = int(parts[0])
+                second = int(parts[1])
+                if first in (10, 127, 0, 255): return True
+                if first == 192 and second == 168: return True
+                if first == 172 and 16 <= second <= 31: return True
+            except ValueError:
+                return True
+
+    return False
+
+
 def scan_paste(url, rotator):
+    # Skip URL ga relevan
+    if should_skip_url(url):
+        return None
+
     content = fetch(url, rotator)
     if not content:
         return None
+
     soup = BeautifulSoup(content, "lxml")
+
+    # Coba textarea dulu (pastebin/rentry format)
     textarea = soup.find("textarea")
     if textarea:
         raw = textarea.get_text()
     else:
-        for tag in soup(["script", "style", "nav", "header", "footer"]):
-            tag.decompose()
-        raw = soup.get_text()
-    if len(raw) < 50:
+        # Ambil dari tag <pre> atau <code> (paste site umumnya di sini)
+        pre = soup.find("pre") or soup.find("code")
+        if pre:
+            raw = pre.get_text()
+        else:
+            # Fallback: body text, buang script/style
+            for tag in soup(["script", "style", "nav", "header", "footer", "aside"]):
+                tag.decompose()
+            raw = soup.get_text()
+
+    if len(raw) < 100:  # minimal 100 karakter
         return None
+
     findings = extract_patterns(raw)
-    if findings:
+
+    # Filter: minimal 2 pattern BERBEDA biar ga false positive
+    if findings and len(findings) >= 2:
         return {"url": url, "size": len(raw), "findings": findings}
+
+    # Atau 1 pattern tapi harus email/hash/wallet (bukan password generic)
+    if findings and len(findings) == 1:
+        strong_patterns = ["email", "hash_md5", "hash_sha1", "hash_sha256",
+                          "credit_card", "btc_wallet", "eth_wallet",
+                          "private_key", "aws_key", "db_conn"]
+        if any(k in findings for k in strong_patterns):
+            return {"url": url, "size": len(raw), "findings": findings}
+
     return None
 
 
@@ -268,7 +393,7 @@ def run_leak_scan(threads=20):
     return {
         "results": results,
         "file": out_file if results else None,
-        "time": f"{counter['done']} link diproses",
+        "time": f"{counter['done']} link diproses, {counter['found']} hit",
     }
 
 
