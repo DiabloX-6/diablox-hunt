@@ -664,7 +664,8 @@ async def unban_cmd(update, context):
 
 async def listuser_cmd(update, context):
     uid = update.effective_user.id
-    if not is_owner_uid(uid): return    users = list_users()
+    if not is_owner_uid(uid): return   
+    users = list_users()
     if not users: await update.message.reply_text("📭 Kosong"); return
     text = "👥 *USER LIST*\n\n"
     for id_str, u in users.items():
