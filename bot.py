@@ -24,8 +24,17 @@ from modules.recon import (
 )
 from modules.vuln import VulnScanner
 from modules.report import save_json_report, save_html_report
-from modules.tiktok_crack import run_tiktok_checker
-from modules.proxy_scraper import refresh_proxy_file
+
+# ===== OSINT MODULES =====
+from modules.osint_phone import scan_phone
+from modules.osint_email import scan_email
+from modules.osint_username import scan_username
+from modules.osint_ip import scan_ip
+from modules.osint_nik import scan_nik
+from modules.osint_rekening import scan_rekening
+from modules.osint_instagram import scan_ig
+from modules.osint_telegram import scan_telegram
+
 from database import (
     is_owner, is_registered, is_active, get_user, add_user, remove_user,
     extend_user, ban_user, unban_user, list_users, sisa_hari,
@@ -41,7 +50,7 @@ NAMA_BOT = "DiabloXhunt"
 NAMA_OWNER = "Naddd"
 OWNER_USERNAME = "ZerooTwo2"
 OWNER_ID = 123456789  # <-- GANTI KE ID TELEGRAM KAMU
-VERSION = "2.6"
+VERSION = "2.7"
 BANNER_URL = os.getenv("BANNER_URL", "https://i.imgur.com/pp1gIFY.jpeg")
 # =================================================
 
@@ -105,6 +114,27 @@ def cek_akses(uid):
     return "active", ""
 
 
+def cek_akses_osint(uid):
+    """Akses OSINT: owner, paket pro, atau lifetime."""
+    if is_owner_uid(uid):
+        return True, ""
+    status, pesan = cek_akses(uid)
+    if status in ("unregistered", "banned", "expired"):
+        return False, pesan
+    user = get_user(uid)
+    if user and user.get("paket", "").lower() in ("pro", "lifetime"):
+        return True, ""
+    return False, (
+        "╔══════════════════════╗\n"
+        "║  🔒 *AKSES TERBATAS* ║\n"
+        "╚══════════════════════╝\n\n"
+        "Menu *OSINT Tools* hanya untuk:\n"
+        "🥇 Paket *PRO*\n"
+        "👑 Paket *LIFETIME*\n\n"
+        f"Upgrade ke owner: {owner_link()}"
+    )
+
+
 def get_arg(context) -> str:
     return context.args[0] if context.args else ""
 
@@ -139,7 +169,6 @@ def summary_text(findings) -> str:
 
 
 async def safe_edit(query, caption, keyboard=None):
-    """Edit caption kalau pesan berupa photo, fallback ke text."""
     try:
         await query.edit_message_caption(
             caption=caption, parse_mode="Markdown", reply_markup=keyboard
@@ -162,10 +191,9 @@ def main_menu_keyboard(uid):
     keyboard.extend([
         [InlineKeyboardButton("🔍 Recon Tools", callback_data="menu_recon")],
         [InlineKeyboardButton("💥 Vuln Scanner", callback_data="menu_vuln")],
+        [InlineKeyboardButton("🕵️ OSINT Tools", callback_data="menu_osint")],
         [InlineKeyboardButton("🧰 Tools & Utility", callback_data="menu_tools")],
     ])
-    if is_owner_uid(uid):
-        keyboard.append([InlineKeyboardButton("🎵 TikTok Checker", callback_data="menu_tiktok")])
     keyboard.extend([
         [
             InlineKeyboardButton("👤 Akun Saya", callback_data="menu_akun"),
@@ -204,6 +232,20 @@ def vuln_menu_keyboard():
          InlineKeyboardButton("🔓 CORS", callback_data="vuln_cors")],
         [InlineKeyboardButton("⚙️ Methods", callback_data="vuln_methods"),
          InlineKeyboardButton("📁 Dir", callback_data="vuln_dir")],
+        [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
+    ])
+
+
+def osint_menu_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📱 Phone", callback_data="osint_phone"),
+         InlineKeyboardButton("📧 Email", callback_data="osint_email")],
+        [InlineKeyboardButton("👤 Username", callback_data="osint_username"),
+         InlineKeyboardButton("🌍 IP", callback_data="osint_ip")],
+        [InlineKeyboardButton("🆔 NIK", callback_data="osint_nik"),
+         InlineKeyboardButton("🏦 Rekening", callback_data="osint_rekening")],
+        [InlineKeyboardButton("📸 Instagram", callback_data="osint_instagram"),
+         InlineKeyboardButton("💬 Telegram", callback_data="osint_telegram")],
         [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
     ])
 
@@ -336,148 +378,6 @@ async def owner_cmd(update, context):
     )
 
 
-# ================== TIKTOK CHECKER ==================
-
-async def ttcheck_cmd(update, context):
-    uid = update.effective_user.id
-    if not is_owner_uid(uid):
-        await update.message.reply_text("🚫 Command ini hanya untuk owner.")
-        return
-    await update.message.reply_text(
-        "🎵 *TIKTOK CHECKER*\n\n"
-        "📄 Kirim file `.txt` berisi combo `email:password`\n\n"
-        "⚙️ *Setting:*\n"
-        "• Threads: `10`\n"
-        "• Delay: `1.5-4s` + backoff\n"
-        "• Proxy: `aktif jika ada proxy.txt`\n"
-        "• Retry: `3x`\n"
-        "• Rotasi UA + X-Gorgon + X-Argus + X-Ladon\n\n"
-        "🔄 Scrape proxy: `/scrapproxy`",
-        parse_mode="Markdown"
-    )
-
-
-async def handle_tt_file(update, context):
-    uid = update.effective_user.id
-    if not is_owner_uid(uid):
-        await update.message.reply_text("🚫 Command ini hanya untuk owner.")
-        return
-
-    doc = update.message.document
-    if not doc.file_name.endswith(".txt"):
-        await update.message.reply_text("❌ File harus .txt")
-        return
-
-    await update.message.reply_text("⏳ Downloading...")
-    f = await doc.get_file()
-    path = f"tt_combo_{uid}.txt"
-    await f.download_to_drive(path)
-
-    with open(path, "r", encoding="utf-8", errors="ignore") as fp:
-        combos = [l.strip() for l in fp if ":" in l]
-
-    if not combos:
-        await update.message.reply_text("❌ File kosong / format salah.")
-        os.remove(path)
-        return
-
-    status_msg = await update.message.reply_text(
-        f"🔎 Checking {len(combos)} combo...\nProgress: 0/{len(combos)}"
-    )
-
-    last_update = {"t": 0}
-    loop = asyncio.get_event_loop()
-
-    async def progress(done, total):
-        now = loop.time()
-        if now - last_update["t"] > 5:
-            last_update["t"] = now
-            try:
-                await status_msg.edit_text(
-                    f"🔎 Checking {total} combo...\nProgress: {done}/{total}"
-                )
-            except:
-                pass
-
-    def sync_progress(done, total):
-        try:
-            asyncio.run_coroutine_threadsafe(progress(done, total), loop)
-        except:
-            pass
-
-    result = await loop.run_in_executor(
-        None, lambda: run_tiktok_checker(combos, sync_progress)
-    )
-
-    msg = (
-        f"📊 *HASIL TIKTOK*\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"✅ HIT      : {len(result['hits'])}\n"
-        f"❌ WRONG    : {result['wrong']}\n"
-        f"🤖 CAPTCHA  : {result['captcha']}\n"
-        f"⚠️ ERROR    : {result['errors']}\n"
-        f"🚫 SKIPPED  : {result.get('skipped', 0)}\n"
-        f"📦 TOTAL    : {result['total']}"
-    )
-    try:
-        await status_msg.edit_text(msg, parse_mode="Markdown")
-    except:
-        await update.message.reply_text(msg, parse_mode="Markdown")
-
-    if result["hits"]:
-        out = f"tt_hit_{uid}.txt"
-        with open(out, "w") as fo:
-            fo.write("\n".join(result["hits"]))
-        await update.message.reply_document(
-            document=open(out, "rb"),
-            filename="tiktok_hit.txt",
-            caption=f"🎯 {len(result['hits'])} HIT"
-        )
-        os.remove(out)
-    os.remove(path)
-
-
-# ================== SCRAPE PROXY ==================
-
-async def scrapoxy_cmd(update, context):
-    uid = update.effective_user.id
-    if not is_owner_uid(uid):
-        await update.message.reply_text("🚫 Owner only!")
-        return
-
-    msg = await update.message.reply_text(
-        "🔄 *Scrape proxy dimulai...*\n\n"
-        "1. Fetch dari 18 sumber\n"
-        "2. Dedup\n"
-        "3. Health check (~3-10 menit)\n\n"
-        "⏳ Tunggu...",
-        parse_mode="Markdown"
-    )
-
-    loop = asyncio.get_event_loop()
-
-    try:
-        n = await loop.run_in_executor(None, refresh_proxy_file)
-        if n > 0:
-            text = (
-                f"✅ *Scrape selesai!*\n\n"
-                f"📦 Proxy hidup: `{n}`\n"
-                f"📄 Tersimpan di `proxy.txt`\n\n"
-                f"Proxy bakal dipakai di TikTok checker berikutnya."
-            )
-        else:
-            text = (
-                f"⚠️ *Scrape selesai, tapi 0 proxy hidup*\n\n"
-                f"Coba scrape ulang, sumber proxy gratis sering down."
-            )
-        try:
-            await msg.edit_text(text, parse_mode="Markdown")
-        except:
-            await update.message.reply_text(text, parse_mode="Markdown")
-    except Exception as e:
-        await msg.edit_text(f"❌ Error: {e}")
-
-
 # ================== CALLBACK ==================
 
 async def menu_callback(update, context):
@@ -541,72 +441,27 @@ async def menu_callback(update, context):
             vuln_menu_keyboard())
         return
 
+    if data == "menu_osint":
+        ok, msg = cek_akses_osint(uid)
+        if not ok:
+            await safe_edit(query, msg, owner_button())
+            return
+        await safe_edit(query,
+            header("OSINT TOOLS", "🕵️") +
+            "📱 Phone  📧 Email\n"
+            "👤 Username  🌍 IP\n"
+            "🆔 NIK  🏦 Rekening\n"
+            "📸 Instagram  💬 Telegram\n\n"
+            "🔒 _Khusus paket PRO / LIFETIME_",
+            osint_menu_keyboard())
+        return
+
     if data == "menu_tools":
         await safe_edit(query,
             header("TOOLS", "🧰") +
             "🔐 Base64 Encode  🔓 Base64 Decode\n"
             "#️⃣ Hash  🎫 JWT Decode",
             tools_menu_keyboard())
-        return
-
-    if data == "menu_tiktok":
-        if not is_owner_uid(uid):
-            await query.answer("🔒 Owner only!", show_alert=True)
-            return
-        await safe_edit(query,
-            header("TIKTOK CHECKER", "🎵") +
-            "📄 *Cara pakai:*\n"
-            "1. Ketik `/ttcheck`\n"
-            "2. Kirim file `.txt` combo\n"
-            "3. Tunggu proses\n\n"
-            "🔄 Scrape proxy: tombol di bawah\n\n"
-            "🔒 Owner only",
-            InlineKeyboardMarkup([
-                [InlineKeyboardButton("🚀 Mulai Check", callback_data="tiktok_start")],
-                [InlineKeyboardButton("🔄 Scrape Proxy", callback_data="tiktok_scrape")],
-                [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
-            ]))
-        return
-
-    if data == "tiktok_start":
-        if not is_owner_uid(uid):
-            await query.answer("🔒 Owner only!", show_alert=True)
-            return
-        await safe_edit(query,
-            header("TIKTOK CHECKER", "🎵") +
-            "📄 Kirim file `.txt` combo `email:password` sekarang.\n\n"
-            "Format:\n```\nemail1:pass1\nemail2:pass2\n```",
-            InlineKeyboardMarkup([
-                [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_tiktok")],
-            ]))
-        return
-
-    if data == "tiktok_scrape":
-        if not is_owner_uid(uid):
-            await query.answer("🔒 Owner only!", show_alert=True)
-            return
-        await safe_edit(query,
-            "🔄 *Scrape proxy dimulai...*\n\n"
-            "1. Fetch dari 18 sumber\n"
-            "2. Dedup\n"
-            "3. Health check (~3-10 menit)\n\n"
-            "⏳ Tunggu...")
-        loop = asyncio.get_event_loop()
-        try:
-            n = await loop.run_in_executor(None, refresh_proxy_file)
-            if n > 0:
-                text = (
-                    f"✅ *Scrape selesai!*\n\n"
-                    f"📦 Proxy hidup: `{n}`\n"
-                    f"📄 Tersimpan di `proxy.txt`"
-                )
-            else:
-                text = "⚠️ *0 proxy hidup.* Coba scrape ulang."
-            await safe_edit(query, text, InlineKeyboardMarkup([
-                [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_tiktok")],
-            ]))
-        except Exception as e:
-            await safe_edit(query, f"❌ Error: {e}")
         return
 
     if data == "menu_owner":
@@ -664,6 +519,7 @@ async def menu_callback(update, context):
         return
 
     prompts = {
+        # RECON
         "recon_dns": "🌐 `/dns example.com`",
         "recon_sub": "🔎 `/sub example.com`",
         "recon_whois": "📋 `/whois example.com`",
@@ -675,6 +531,7 @@ async def menu_callback(update, context):
         "recon_dork": "🕵️ `/dork example.com`",
         "recon_axfr": "📡 `/axfr example.com`",
         "recon_rev": "🔄 `/rev 8.8.8.8`",
+        # VULN
         "vuln_scan": "🚀 `/scan example.com`",
         "vuln_sqli": "💉 `/sqli <url>`",
         "vuln_xss": "🎯 `/xss <url>`",
@@ -684,10 +541,21 @@ async def menu_callback(update, context):
         "vuln_cors": "🔓 `/cors <url>`",
         "vuln_methods": "⚙️ `/methods <url>`",
         "vuln_dir": "📁 `/dir <url>`",
+        # TOOLS
         "tools_base64e": "🔐 `/base64e hello`",
         "tools_base64d": "🔓 `/base64d aGVsbG8=`",
         "tools_hash": "#️⃣ `/hash hello`",
         "tools_jwt": "🎫 `/jwt <token>`",
+        # OSINT
+        "osint_phone": "📱 `/phone 628123456789`",
+        "osint_email": "📧 `/email target@gmail.com`",
+        "osint_username": "👤 `/username johndoe`",
+        "osint_ip": "🌍 `/ipinfo 8.8.8.8`",
+        "osint_nik": "🆔 `/nik 3201234567890001`",
+        "osint_rekening": "🏦 `/rek 1234567890`",
+        "osint_instagram": "📸 `/ig johndoe`",
+        "osint_telegram": "💬 `/tg johndoe`",
+        # OWNER
         "owner_adduser": "➕ `/adduser <id> <nama> <paket>`",
         "owner_removeuser": "➖ `/removeuser <id>`",
         "owner_extend": "⏱️ `/extend <id> <hari>`",
@@ -722,7 +590,7 @@ async def menu_callback(update, context):
         return
 
 
-# ================== OWNER CMD (versi ringkas) ==================
+# ================== OWNER CMD ==================
 
 async def adduser_cmd(update, context):
     uid = update.effective_user.id
@@ -1188,6 +1056,40 @@ async def dir_cmd(update, context):
         await msg.edit_text(f"❌ {e}")
 
 
+# ================== OSINT ==================
+
+async def _osint_run(update, context, fn, label, usage):
+    uid = update.effective_user.id
+    ok, msg = cek_akses_osint(uid)
+    if not ok:
+        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=owner_button())
+        return
+    arg = " ".join(context.args) if context.args else ""
+    if not arg:
+        await update.message.reply_text(f"❌ Usage: `{usage}`", parse_mode="Markdown")
+        return
+    m = await update.message.reply_text(f"🔍 {label} `{arg}`...")
+    try:
+        result = await asyncio.to_thread(fn, arg)
+    except Exception as e:
+        result = f"❌ Error: {e}"
+    if len(result) > 4000:
+        result = result[:4000] + "\n..."
+    try:
+        await m.edit_text(result, parse_mode="Markdown")
+    except Exception:
+        await m.edit_text(result)
+
+async def osint_phone_cmd(u, c):     await _osint_run(u, c, scan_phone,       "Phone",    "/phone 628123456789")
+async def osint_email_cmd(u, c):     await _osint_run(u, c, scan_email,       "Email",    "/email target@gmail.com")
+async def osint_username_cmd(u, c):  await _osint_run(u, c, scan_username,    "Username", "/username johndoe")
+async def osint_ip_cmd(u, c):        await _osint_run(u, c, scan_ip,          "IP",       "/ipinfo 8.8.8.8")
+async def osint_nik_cmd(u, c):       await _osint_run(u, c, scan_nik,         "NIK",      "/nik 3201234567890001")
+async def osint_rek_cmd(u, c):       await _osint_run(u, c, scan_rekening,    "Rekening", "/rek 1234567890")
+async def osint_ig_cmd(u, c):        await _osint_run(u, c, scan_ig,          "Instagram","/ig johndoe")
+async def osint_tg_cmd(u, c):        await _osint_run(u, c, scan_telegram,    "Telegram", "/tg johndoe")
+
+
 # ================== TOOLS ==================
 
 async def base64e_cmd(update, context):
@@ -1255,15 +1157,6 @@ async def handle_text(update, context):
 async def error_handler(update, context):
     logger.error(f"Error: {context.error}")
 
-async def auto_refresh_proxy_job(context):
-    try:
-        logger.info("[Auto] Refresh proxy...")
-        loop = asyncio.get_event_loop()
-        n = await loop.run_in_executor(None, refresh_proxy_file)
-        logger.info(f"[Auto] Proxy refreshed: {n} hidup")
-    except Exception as e:
-        logger.error(f"[Auto] Gagal refresh proxy: {e}")
-
 
 # ================== MAIN ==================
 
@@ -1313,29 +1206,29 @@ def main():
     app.add_handler(CommandHandler("cors", cors_cmd))
     app.add_handler(CommandHandler("methods", methods_cmd))
     app.add_handler(CommandHandler("dir", dir_cmd))
+    # OSINT
+    app.add_handler(CommandHandler("phone", osint_phone_cmd))
+    app.add_handler(CommandHandler("email", osint_email_cmd))
+    app.add_handler(CommandHandler("username", osint_username_cmd))
+    app.add_handler(CommandHandler("ipinfo", osint_ip_cmd))
+    app.add_handler(CommandHandler("nik", osint_nik_cmd))
+    app.add_handler(CommandHandler("rek", osint_rek_cmd))
+    app.add_handler(CommandHandler("ig", osint_ig_cmd))
+    app.add_handler(CommandHandler("tg", osint_tg_cmd))
     # Tools
     app.add_handler(CommandHandler("base64e", base64e_cmd))
     app.add_handler(CommandHandler("base64d", base64d_cmd))
     app.add_handler(CommandHandler("hash", hash_cmd))
     app.add_handler(CommandHandler("jwt", jwt_cmd))
-    # TikTok + Proxy
-    app.add_handler(CommandHandler("ttcheck", ttcheck_cmd))
-    app.add_handler(CommandHandler("scrapproxy", scrapoxy_cmd))
     # Callback & text
     app.add_handler(CallbackQueryHandler(menu_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    # File handler
-    app.add_handler(MessageHandler(
-        filters.Document.FileExtension("txt") & filters.User(user_id=5728930563),
-        handle_tt_file
-    ))
     app.add_error_handler(error_handler)
 
     try:
         jq = app.job_queue
         jq.run_daily(cek_expired_job, time=dt_mod.time(hour=9, minute=0))
-        jq.run_repeating(auto_refresh_proxy_job, interval=12*3600, first=60)
-        logger.info("Job queue: expired 09:00, refresh proxy tiap 12 jam")
+        logger.info("Job queue: expired 09:00")
     except Exception as e:
         logger.error(f"JobQueue: {e}")
 
