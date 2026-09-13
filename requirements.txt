@@ -8,3 +8,4 @@ holehe
 httpx
 cachetools
 Pillow
+python-dotenv
