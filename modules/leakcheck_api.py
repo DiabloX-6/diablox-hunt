@@ -13,7 +13,6 @@ def check_leakcheck(query: str, query_type: str = "email") -> dict:
     """
     Cek email/username/phone/domain di LeakCheck.
     query_type: email | username | phone | domain
-    Return: dict {success: bool, data: dict} atau {error: str}
     """
     if not LEAKCHECK_KEY:
         return {"error": "LEAKCHECK_KEY belum di-set di .env"}
@@ -67,7 +66,6 @@ def format_leakcheck_result(query: str, result: dict) -> str:
     text += f"📧 *Query:* `{query}`\n"
     text += f"📊 *Ditemukan di:* `{found}` breach\n\n"
 
-    # Sources
     if sources:
         text += f"*Sumber Breach:*\n"
         for src in sources[:15]:
@@ -84,16 +82,13 @@ def format_leakcheck_result(query: str, result: dict) -> str:
             text += f"  _... dan {len(sources)-15} sumber lainnya_\n"
         text += "\n"
 
-    # Fields
     if fields:
         text += f"*Data yang bocor:* `{', '.join(fields)}`\n\n"
 
-    # Detail entries
     if result_list:
         text += f"*Detail (max 10):*\n"
-        for i, entry in enumerate(result_list[:10]):
+        for entry in result_list[:10]:
             if isinstance(entry, dict):
-                # Format: email:password atau field lain
                 parts = []
                 for k in ["email", "username", "password", "name", "phone", "hash", "ip"]:
                     if entry.get(k):
