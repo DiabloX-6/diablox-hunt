@@ -42,6 +42,9 @@ from modules.osint_extra import (
     scan_subdomain_history, scan_leakcheck, scan_phonetrack,
 )
 
+# === LEAK AGGREGATOR ===
+from modules.leak_agg import run_leak_scan, load_leak_results
+
 from database import (
     is_owner, is_registered, is_active, get_user, add_user, remove_user,
     extend_user, ban_user, unban_user, list_users, sisa_hari,
@@ -255,6 +258,9 @@ def osint_menu_keyboard():
          InlineKeyboardButton("💬 Telegram", callback_data="osint_telegram")],
         [InlineKeyboardButton("🎯 PhoneTrack", callback_data="osint_phonetrack"),
          InlineKeyboardButton("📋 Pastebin", callback_data="osint_pastebin")],
+        # === TAMBAHAN: tombol LeakScan ===
+        [InlineKeyboardButton("🚨 LeakScan", callback_data="osint_leakscan")],
+        # ==================================
         [InlineKeyboardButton("🖼 EXIF", callback_data="osint_exif"),
          InlineKeyboardButton("📜 SubHist", callback_data="osint_subhist")],
         [InlineKeyboardButton("🔭 Shodan-D", callback_data="osint_shodand"),
@@ -466,8 +472,9 @@ async def menu_callback(update, context):
             "🆔 NIK  🏦 Rekening\n"
             "📸 Instagram  💬 Telegram\n"
             "🎯 PhoneTrack  📋 Pastebin\n"
-            "🖼 EXIF  📜 SubHist\n"
-            "🔭 Shodan-D  🚨 LeakCheck\n\n"
+            "🚨 LeakScan  🖼 EXIF\n"
+            "📜 SubHist  🔭 Shodan-D\n"
+            "🚨 LeakCheck\n\n"
             "🔒 _Khusus paket PRO / LIFETIME_",
             osint_menu_keyboard())
         return
@@ -535,7 +542,6 @@ async def menu_callback(update, context):
         return
 
     prompts = {
-        # RECON
         "recon_dns": "🌐 `/dns example.com`",
         "recon_sub": "🔎 `/sub example.com`",
         "recon_whois": "📋 `/whois example.com`",
@@ -547,7 +553,6 @@ async def menu_callback(update, context):
         "recon_dork": "🕵️ `/dork example.com`",
         "recon_axfr": "📡 `/axfr example.com`",
         "recon_rev": "🔄 `/rev 8.8.8.8`",
-        # VULN
         "vuln_scan": "🚀 `/scan example.com`",
         "vuln_sqli": "💉 `/sqli <url>`",
         "vuln_xss": "🎯 `/xss <url>`",
@@ -557,12 +562,10 @@ async def menu_callback(update, context):
         "vuln_cors": "🔓 `/cors <url>`",
         "vuln_methods": "⚙️ `/methods <url>`",
         "vuln_dir": "📁 `/dir <url>`",
-        # TOOLS
         "tools_base64e": "🔐 `/base64e hello`",
         "tools_base64d": "🔓 `/base64d aGVsbG8=`",
         "tools_hash": "#️⃣ `/hash hello`",
         "tools_jwt": "🎫 `/jwt <token>`",
-        # OSINT
         "osint_phone": "📱 `/phone 628123456789`",
         "osint_email": "📧 `/email target@gmail.com`",
         "osint_username": "👤 `/username johndoe`",
@@ -577,7 +580,9 @@ async def menu_callback(update, context):
         "osint_subhist":    "📜 `/subhist example.com`",
         "osint_shodand":    "🔭 `/shodand example.com`",
         "osint_leakcheck":  "🚨 `/leakcheck email@example.com`",
-        # OWNER
+        # === TAMBAHAN: prompt leakscan ===
+        "osint_leakscan":   "🚨 `/leakscan [threads]`\n_Contoh: `/leakscan 30`_",
+        # ================================
         "owner_adduser": "➕ `/adduser <id> <nama> <paket>`",
         "owner_removeuser": "➖ `/removeuser <id>`",
         "owner_extend": "⏱️ `/extend <id> <hari>`",
@@ -667,7 +672,7 @@ async def unban_cmd(update, context):
 
 async def listuser_cmd(update, context):
     uid = update.effective_user.id
-    if not is_owner_uid(uid): return   
+    if not is_owner_uid(uid): return
     users = list_users()
     if not users: await update.message.reply_text("📭 Kosong"); return
     text = "👥 *USER LIST*\n\n"
@@ -1128,7 +1133,6 @@ async def _osint_run(update, context, fn, label, usage):
 
 
 async def _osint_run_async(update, context, afn, label, usage):
-    """Untuk fungsi async (mis. scan_rekening versi baru)."""
     uid = update.effective_user.id
     ok, msg = cek_akses_osint(uid)
     if not ok:
@@ -1160,13 +1164,76 @@ async def osint_rek_cmd(u, c):        await _osint_run(u, c, scan_rekening,     
 async def osint_ig_cmd(u, c):         await _osint_run(u, c, scan_ig,            "Instagram","/ig johndoe")
 async def osint_tg_cmd(u, c):         await _osint_run(u, c, scan_telegram,      "Telegram", "/tg johndoe")
 
-# --- EXTRA OSINT ---
 async def osint_phonetrack_cmd(u, c): await _osint_run_async(u, c, scan_phonetrack,        "PhoneTrack", "/phonetrack 628123456789")
 async def osint_pastebin_cmd(u, c):   await _osint_run_async(u, c, scan_pastebin,          "Pastebin",   "/pastebin example.com")
 async def osint_exif_cmd(u, c):       await _osint_run_async(u, c, scan_exif,              "EXIF",       "/exif https://i.imgur.com/x.jpg")
 async def osint_subhist_cmd(u, c):    await _osint_run_async(u, c, scan_subdomain_history, "SubHist",    "/subhist example.com")
 async def osint_shodand_cmd(u, c):    await _osint_run_async(u, c, scan_shodan_domain,     "Shodan-D",   "/shodand example.com")
 async def osint_leak_cmd(u, c):       await _osint_run_async(u, c, scan_leakcheck,         "LeakCheck",  "/leakcheck email@example.com")
+
+
+# ================== LEAK AGGREGATOR ==================
+
+async def leakscan_cmd(update, context):
+    uid = update.effective_user.id
+    ok, msg = cek_akses_osint(uid)
+    if not ok:
+        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=owner_button())
+        return
+
+    threads = 20
+    if context.args:
+        try:
+            threads = int(context.args[0])
+            threads = max(1, min(threads, 50))
+        except Exception:
+            pass
+
+    m = await update.message.reply_text(
+        f"🔍 *Leak Aggregator* dimulai...\n"
+        f"🧵 Thread: `{threads}`\n"
+        f"⏱️ Estimasi: 3-10 menit\n\n"
+        f"_Bot akan kirim hasil kalo udah selesai._",
+        parse_mode="Markdown"
+    )
+
+    try:
+        result = await asyncio.to_thread(run_leak_scan, threads)
+    except Exception as e:
+        await m.edit_text(f"❌ Error: `{e}`", parse_mode="Markdown")
+        return
+
+    if not result or not result.get("results"):
+        await m.edit_text("✅ Selesai, tapi gak ada data leak ditemukan.")
+        return
+
+    data = result["results"]
+    total_patterns = {}
+    for r in data:
+        for k, v in r["findings"].items():
+            total_patterns[k] = total_patterns.get(k, 0) + len(v)
+
+    text = (
+        f"✅ *LEAK SCAN SELESAI*\n\n"
+        f"📊 Sumber ditemukan: `{len(data)}`\n"
+        f"🧵 Thread: `{threads}`\n"
+        f"⏰ Waktu: `{result['time']}`\n\n"
+        f"*Pattern ditemukan:*\n"
+    )
+    for k, v in sorted(total_patterns.items(), key=lambda x: -x[1]):
+        text += f"  • `{k}`: {v}\n"
+
+    await m.edit_text(text[:4000], parse_mode="Markdown")
+
+    try:
+        with open(result["file"], "rb") as f:
+            await update.message.reply_document(
+                document=f,
+                filename=os.path.basename(result["file"]),
+                caption=f"📄 Hasil leak scan - {len(data)} sumber"
+            )
+    except Exception as e:
+        logger.error(f"Kirim file leak: {e}")
 
 
 # ================== TOOLS ==================
@@ -1248,16 +1315,13 @@ def main():
         print("❌ BOT_TOKEN belum di-set"); return
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Info
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("myaccount", myaccount_cmd))
     app.add_handler(CommandHandler("paket", paket_cmd))
     app.add_handler(CommandHandler("owner", owner_cmd))
-    # Referral
     app.add_handler(CommandHandler("myref", myref_cmd))
     app.add_handler(CommandHandler("topref", topref_cmd))
     app.add_handler(CommandHandler("register", register_cmd))
-    # Owner
     app.add_handler(CommandHandler("adduser", adduser_cmd))
     app.add_handler(CommandHandler("removeuser", removeuser_cmd))
     app.add_handler(CommandHandler("extend", extend_cmd))
@@ -1267,7 +1331,6 @@ def main():
     app.add_handler(CommandHandler("userinfo", userinfo_cmd))
     app.add_handler(CommandHandler("setowner", setowner_cmd))
     app.add_handler(CommandHandler("cekexpired", cekexpired_cmd))
-    # Recon
     app.add_handler(CommandHandler("dns", dns_cmd))
     app.add_handler(CommandHandler("sub", sub_cmd))
     app.add_handler(CommandHandler("whois", whois_cmd))
@@ -1279,7 +1342,6 @@ def main():
     app.add_handler(CommandHandler("dork", dork_cmd))
     app.add_handler(CommandHandler("axfr", axfr_cmd))
     app.add_handler(CommandHandler("rev", rev_cmd))
-    # Vuln
     app.add_handler(CommandHandler("scan", scan_cmd))
     app.add_handler(CommandHandler("sqli", sqli_cmd))
     app.add_handler(CommandHandler("xss", xss_cmd))
@@ -1289,7 +1351,6 @@ def main():
     app.add_handler(CommandHandler("cors", cors_cmd))
     app.add_handler(CommandHandler("methods", methods_cmd))
     app.add_handler(CommandHandler("dir", dir_cmd))
-    # OSINT
     app.add_handler(CommandHandler("phone", osint_phone_cmd))
     app.add_handler(CommandHandler("email", osint_email_cmd))
     app.add_handler(CommandHandler("username", osint_username_cmd))
@@ -1298,19 +1359,18 @@ def main():
     app.add_handler(CommandHandler("rek", osint_rek_cmd))
     app.add_handler(CommandHandler("ig", osint_ig_cmd))
     app.add_handler(CommandHandler("tg", osint_tg_cmd))
-    # OSINT EXTRA
     app.add_handler(CommandHandler("phonetrack", osint_phonetrack_cmd))
     app.add_handler(CommandHandler("pastebin", osint_pastebin_cmd))
     app.add_handler(CommandHandler("exif", osint_exif_cmd))
     app.add_handler(CommandHandler("subhist", osint_subhist_cmd))
     app.add_handler(CommandHandler("shodand", osint_shodand_cmd))
     app.add_handler(CommandHandler("leakcheck", osint_leak_cmd))
-    # Tools
+    # === LEAK SCAN ===
+    app.add_handler(CommandHandler("leakscan", leakscan_cmd))
     app.add_handler(CommandHandler("base64e", base64e_cmd))
     app.add_handler(CommandHandler("base64d", base64d_cmd))
     app.add_handler(CommandHandler("hash", hash_cmd))
     app.add_handler(CommandHandler("jwt", jwt_cmd))
-    # Callback & text
     app.add_handler(CallbackQueryHandler(menu_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_error_handler(error_handler)
