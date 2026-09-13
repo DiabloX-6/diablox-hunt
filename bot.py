@@ -258,9 +258,7 @@ def osint_menu_keyboard():
          InlineKeyboardButton("💬 Telegram", callback_data="osint_telegram")],
         [InlineKeyboardButton("🎯 PhoneTrack", callback_data="osint_phonetrack"),
          InlineKeyboardButton("📋 Pastebin", callback_data="osint_pastebin")],
-        # === TAMBAHAN: tombol LeakScan ===
         [InlineKeyboardButton("🚨 LeakScan", callback_data="osint_leakscan")],
-        # ==================================
         [InlineKeyboardButton("🖼 EXIF", callback_data="osint_exif"),
          InlineKeyboardButton("📜 SubHist", callback_data="osint_subhist")],
         [InlineKeyboardButton("🔭 Shodan-D", callback_data="osint_shodand"),
@@ -580,9 +578,12 @@ async def menu_callback(update, context):
         "osint_subhist":    "📜 `/subhist example.com`",
         "osint_shodand":    "🔭 `/shodand example.com`",
         "osint_leakcheck":  "🚨 `/leakcheck email@example.com`",
-        # === TAMBAHAN: prompt leakscan ===
-        "osint_leakscan":   "🚨 `/leakscan [threads]`\n_Contoh: `/leakscan 30`_",
-        # ================================
+        "osint_leakscan":   "🚨 `/leakscan [threads] [mode]`\n"
+                            "Mode: `loose` / `medium` / `strict`\n"
+                            "Contoh:\n"
+                            "`/leakscan 30` — medium (default)\n"
+                            "`/leakscan 30 loose` — longgar\n"
+                            "`/leakscan 30 strict` — galak",
         "owner_adduser": "➕ `/adduser <id> <nama> <paket>`",
         "owner_removeuser": "➖ `/removeuser <id>`",
         "owner_extend": "⏱️ `/extend <id> <hari>`",
@@ -1182,15 +1183,28 @@ async def leakscan_cmd(update, context):
         return
 
     threads = 20
+    mode = "medium"
+
     if context.args:
-        try:
+        if context.args[0].isdigit():
             threads = int(context.args[0])
             threads = max(1, min(threads, 50))
-        except Exception:
-            pass
+            if len(context.args) > 1 and context.args[1] in ("loose", "medium", "strict"):
+                mode = context.args[1]
+        elif context.args[0] in ("loose", "medium", "strict"):
+            mode = context.args[0]
+
+    mode_emoji = {"loose": "🟢", "medium": "🟡", "strict": "🔴"}[mode]
+    mode_desc = {
+        "loose": "Longgar (banyak hasil, ada false positive)",
+        "medium": "Medium (balance)",
+        "strict": "Galak (cuma yang akurat)",
+    }[mode]
 
     m = await update.message.reply_text(
         f"🔍 *Leak Aggregator* dimulai...\n"
+        f"{mode_emoji} Mode: `{mode.upper()}`\n"
+        f"📝 _{mode_desc}_\n"
         f"🧵 Thread: `{threads}`\n"
         f"⏱️ Estimasi: 3-10 menit\n\n"
         f"_Bot akan kirim hasil kalo udah selesai._",
@@ -1198,13 +1212,18 @@ async def leakscan_cmd(update, context):
     )
 
     try:
-        result = await asyncio.to_thread(run_leak_scan, threads)
+        result = await asyncio.to_thread(run_leak_scan, threads, mode)
     except Exception as e:
         await m.edit_text(f"❌ Error: `{e}`", parse_mode="Markdown")
         return
 
     if not result or not result.get("results"):
-        await m.edit_text("✅ Selesai, tapi gak ada data leak ditemukan.")
+        await m.edit_text(
+            f"✅ Selesai (mode `{mode.upper()}`), tapi gak ada data leak ditemukan.\n\n"
+            f"Coba pake mode lain:\n"
+            f"`/leakscan {threads} loose` — lebih longgar",
+            parse_mode="Markdown"
+        )
         return
 
     data = result["results"]
@@ -1215,6 +1234,7 @@ async def leakscan_cmd(update, context):
 
     text = (
         f"✅ *LEAK SCAN SELESAI*\n\n"
+        f"{mode_emoji} Mode: `{mode.upper()}`\n"
         f"📊 Sumber ditemukan: `{len(data)}`\n"
         f"🧵 Thread: `{threads}`\n"
         f"⏰ Waktu: `{result['time']}`\n\n"
@@ -1223,6 +1243,12 @@ async def leakscan_cmd(update, context):
     for k, v in sorted(total_patterns.items(), key=lambda x: -x[1]):
         text += f"  • `{k}`: {v}\n"
 
+    text += (
+        f"\n💡 _Coba mode lain:_\n"
+        f"`/leakscan {threads} loose` — longgar\n"
+        f"`/leakscan {threads} strict` — galak"
+    )
+
     await m.edit_text(text[:4000], parse_mode="Markdown")
 
     try:
@@ -1230,7 +1256,7 @@ async def leakscan_cmd(update, context):
             await update.message.reply_document(
                 document=f,
                 filename=os.path.basename(result["file"]),
-                caption=f"📄 Hasil leak scan - {len(data)} sumber"
+                caption=f"📄 Mode {mode.upper()} - {len(data)} sumber"
             )
     except Exception as e:
         logger.error(f"Kirim file leak: {e}")
@@ -1365,7 +1391,6 @@ def main():
     app.add_handler(CommandHandler("subhist", osint_subhist_cmd))
     app.add_handler(CommandHandler("shodand", osint_shodand_cmd))
     app.add_handler(CommandHandler("leakcheck", osint_leak_cmd))
-    # === LEAK SCAN ===
     app.add_handler(CommandHandler("leakscan", leakscan_cmd))
     app.add_handler(CommandHandler("base64e", base64e_cmd))
     app.add_handler(CommandHandler("base64d", base64d_cmd))
