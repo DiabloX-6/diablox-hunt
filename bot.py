@@ -45,6 +45,9 @@ from modules.osint_extra import (
 # === LEAK AGGREGATOR ===
 from modules.leak_agg import run_leak_scan, load_leak_results
 
+# === LEAKCHECK API ===
+from modules.leakcheck_api import check_leakcheck, format_leakcheck_result
+
 from database import (
     is_owner, is_registered, is_active, get_user, add_user, remove_user,
     extend_user, ban_user, unban_user, list_users, sisa_hari,
@@ -59,8 +62,8 @@ SHODAN_KEY = os.getenv("SHODAN_API_KEY", "")
 NAMA_BOT = "DiabloXhunt"
 NAMA_OWNER = "Naddd"
 OWNER_USERNAME = "ZerooTwo2"
-OWNER_ID = 5728930563  # <-- GANTI KE ID TELEGRAM KAMU
-VERSION = "2.8"
+OWNER_ID = 5728930563
+VERSION = "2.9"
 BANNER_URL = os.getenv("BANNER_URL", "https://i.imgur.com/pp1gIFY.jpeg")
 # =================================================
 
@@ -577,7 +580,11 @@ async def menu_callback(update, context):
         "osint_exif":       "🖼 `/exif https://i.imgur.com/xxx.jpg`",
         "osint_subhist":    "📜 `/subhist example.com`",
         "osint_shodand":    "🔭 `/shodand example.com`",
-        "osint_leakcheck":  "🚨 `/leakcheck email@example.com`",
+        "osint_leakcheck":  "🚨 `/leakcheck <email>`\n"
+                            "Contoh:\n"
+                            "`/leakcheck budi@gmail.com`\n"
+                            "`/leakcheck username:budisantoso`\n"
+                            "`/leakcheck phone:628123456789`",
         "osint_leakscan":   "🚨 `/leakscan [threads] [mode]`\n"
                             "Mode: `loose` / `medium` / `strict`\n"
                             "Contoh:\n"
@@ -1262,6 +1269,65 @@ async def leakscan_cmd(update, context):
         logger.error(f"Kirim file leak: {e}")
 
 
+# ================== LEAKCHECK API ==================
+
+async def leakcheck_cmd(update, context):
+    uid = update.effective_user.id
+    ok, msg = cek_akses_osint(uid)
+    if not ok:
+        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=owner_button())
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "❌ *Usage:*\n"
+            "`/leakcheck <email>` — cek email\n"
+            "`/leakcheck username:<name>` — cek username\n"
+            "`/leakcheck phone:<nomor>` — cek nomor HP\n"
+            "`/leakcheck domain:<domain>` — cek domain\n\n"
+            "Contoh:\n"
+            "`/leakcheck budi@gmail.com`\n"
+            "`/leakcheck username:budisantoso`\n"
+            "`/leakcheck phone:628123456789`",
+            parse_mode="Markdown"
+        )
+        return
+
+    query = " ".join(context.args)
+    query_type = "email"
+
+    if query.startswith("username:"):
+        query = query.replace("username:", "").strip()
+        query_type = "username"
+    elif query.startswith("phone:"):
+        query = query.replace("phone:", "").strip()
+        query_type = "phone"
+    elif query.startswith("domain:"):
+        query = query.replace("domain:", "").strip()
+        query_type = "domain"
+
+    m = await update.message.reply_text(
+        f"🔍 *LeakCheck* — query: `{query}` (`{query_type}`)\n"
+        f"⏱️ Mohon tunggu...",
+        parse_mode="Markdown"
+    )
+
+    try:
+        result = await asyncio.to_thread(check_leakcheck, query, query_type)
+    except Exception as e:
+        await m.edit_text(f"❌ Error: `{e}`", parse_mode="Markdown")
+        return
+
+    text = format_leakcheck_result(query, result)
+    if len(text) > 4000:
+        text = text[:4000] + "\n..."
+
+    try:
+        await m.edit_text(text, parse_mode="Markdown")
+    except Exception:
+        await m.edit_text(text)
+
+
 # ================== TOOLS ==================
 
 async def base64e_cmd(update, context):
@@ -1390,8 +1456,8 @@ def main():
     app.add_handler(CommandHandler("exif", osint_exif_cmd))
     app.add_handler(CommandHandler("subhist", osint_subhist_cmd))
     app.add_handler(CommandHandler("shodand", osint_shodand_cmd))
-    app.add_handler(CommandHandler("leakcheck", osint_leak_cmd))
     app.add_handler(CommandHandler("leakscan", leakscan_cmd))
+    app.add_handler(CommandHandler("leakcheck", leakcheck_cmd))
     app.add_handler(CommandHandler("base64e", base64e_cmd))
     app.add_handler(CommandHandler("base64d", base64d_cmd))
     app.add_handler(CommandHandler("hash", hash_cmd))
