@@ -49,7 +49,7 @@ SHODAN_KEY = os.getenv("SHODAN_API_KEY", "")
 NAMA_BOT = "DiabloXhunt"
 NAMA_OWNER = "Naddd"
 OWNER_USERNAME = "ZerooTwo2"
-OWNER_ID = 123456789  # <-- GANTI KE ID TELEGRAM KAMU
+OWNER_ID = 5728930563 # <-- GANTI KE ID TELEGRAM KAMU
 VERSION = "2.7"
 BANNER_URL = os.getenv("BANNER_URL", "https://i.imgur.com/pp1gIFY.jpeg")
 # =================================================
