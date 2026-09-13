@@ -34,6 +34,10 @@ from modules.osint_nik import scan_nik
 from modules.osint_rekening import scan_rekening
 from modules.osint_instagram import scan_ig
 from modules.osint_telegram import scan_telegram
+from modules.osint_extra import (
+    scan_pastebin, scan_exif, scan_shodan_domain,
+    scan_subdomain_history, scan_leakcheck, scan_phonetrack,
+)
 
 from database import (
     is_owner, is_registered, is_active, get_user, add_user, remove_user,
@@ -49,8 +53,8 @@ SHODAN_KEY = os.getenv("SHODAN_API_KEY", "")
 NAMA_BOT = "DiabloXhunt"
 NAMA_OWNER = "Naddd"
 OWNER_USERNAME = "ZerooTwo2"
-OWNER_ID = 5728930563 # <-- GANTI KE ID TELEGRAM KAMU
-VERSION = "2.7"
+OWNER_ID = 5728930563  # <-- GANTI KE ID TELEGRAM KAMU
+VERSION = "2.8"
 BANNER_URL = os.getenv("BANNER_URL", "https://i.imgur.com/pp1gIFY.jpeg")
 # =================================================
 
@@ -246,6 +250,12 @@ def osint_menu_keyboard():
          InlineKeyboardButton("🏦 Rekening", callback_data="osint_rekening")],
         [InlineKeyboardButton("📸 Instagram", callback_data="osint_instagram"),
          InlineKeyboardButton("💬 Telegram", callback_data="osint_telegram")],
+        [InlineKeyboardButton("🎯 PhoneTrack", callback_data="osint_phonetrack"),
+         InlineKeyboardButton("📋 Pastebin", callback_data="osint_pastebin")],
+        [InlineKeyboardButton("🖼 EXIF", callback_data="osint_exif"),
+         InlineKeyboardButton("📜 SubHist", callback_data="osint_subhist")],
+        [InlineKeyboardButton("🔭 Shodan-D", callback_data="osint_shodand"),
+         InlineKeyboardButton("🚨 LeakCheck", callback_data="osint_leakcheck")],
         [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_main")],
     ])
 
@@ -451,7 +461,10 @@ async def menu_callback(update, context):
             "📱 Phone  📧 Email\n"
             "👤 Username  🌍 IP\n"
             "🆔 NIK  🏦 Rekening\n"
-            "📸 Instagram  💬 Telegram\n\n"
+            "📸 Instagram  💬 Telegram\n"
+            "🎯 PhoneTrack  📋 Pastebin\n"
+            "🖼 EXIF  📜 SubHist\n"
+            "🔭 Shodan-D  🚨 LeakCheck\n\n"
             "🔒 _Khusus paket PRO / LIFETIME_",
             osint_menu_keyboard())
         return
@@ -555,6 +568,12 @@ async def menu_callback(update, context):
         "osint_rekening": "🏦 `/rek 1234567890`",
         "osint_instagram": "📸 `/ig johndoe`",
         "osint_telegram": "💬 `/tg johndoe`",
+        "osint_phonetrack": "🎯 `/phonetrack 628123456789`",
+        "osint_pastebin":   "📋 `/pastebin example.com`",
+        "osint_exif":       "🖼 `/exif https://i.imgur.com/xxx.jpg`",
+        "osint_subhist":    "📜 `/subhist example.com`",
+        "osint_shodand":    "🔭 `/shodand example.com`",
+        "osint_leakcheck":  "🚨 `/leakcheck email@example.com`",
         # OWNER
         "owner_adduser": "➕ `/adduser <id> <nama> <paket>`",
         "owner_removeuser": "➖ `/removeuser <id>`",
@@ -602,6 +621,7 @@ async def adduser_cmd(update, context):
     ok, msg = add_user(target_id, context.args[1], context.args[2].lower())
     await update.message.reply_text(f"{'✅' if ok else '❌'} {msg}")
 
+
 async def removeuser_cmd(update, context):
     uid = update.effective_user.id
     if not is_owner_uid(uid): return
@@ -610,6 +630,7 @@ async def removeuser_cmd(update, context):
     except: return
     ok, msg = remove_user(target_id)
     await update.message.reply_text(f"{'✅' if ok else '❌'} {msg}")
+
 
 async def extend_cmd(update, context):
     uid = update.effective_user.id
@@ -620,6 +641,7 @@ async def extend_cmd(update, context):
     ok, msg = extend_user(target_id, hari)
     await update.message.reply_text(f"{'✅' if ok else '❌'} {msg}")
 
+
 async def ban_cmd(update, context):
     uid = update.effective_user.id
     if not is_owner_uid(uid): return
@@ -628,6 +650,7 @@ async def ban_cmd(update, context):
     except: return
     ok, msg = ban_user(target_id)
     await update.message.reply_text(f"{'✅' if ok else '❌'} {msg}")
+
 
 async def unban_cmd(update, context):
     uid = update.effective_user.id
@@ -638,10 +661,10 @@ async def unban_cmd(update, context):
     ok, msg = unban_user(target_id)
     await update.message.reply_text(f"{'✅' if ok else '❌'} {msg}")
 
+
 async def listuser_cmd(update, context):
     uid = update.effective_user.id
-    if not is_owner_uid(uid): return
-    users = list_users()
+    if not is_owner_uid(uid): return    users = list_users()
     if not users: await update.message.reply_text("📭 Kosong"); return
     text = "👥 *USER LIST*\n\n"
     for id_str, u in users.items():
@@ -650,6 +673,7 @@ async def listuser_cmd(update, context):
         text += f"{emoji} *{u['nama']}* — {u['paket']} — {hari}h — `{id_str}`\n"
     if len(text) > 4000: text = text[:4000] + "..."
     await update.message.reply_text(text, parse_mode="Markdown")
+
 
 async def userinfo_cmd(update, context):
     uid = update.effective_user.id
@@ -667,6 +691,7 @@ async def userinfo_cmd(update, context):
         f"⏳ *{hari} hari*\n"
         f"🚦 `{user['status'].upper()}`",
         parse_mode="Markdown")
+
 
 async def setowner_cmd(update, context):
     uid = update.effective_user.id
@@ -694,6 +719,7 @@ async def myref_cmd(update, context):
         f"🎁 *REFERRAL*\n\n🎫 `{stats['code']}`\n📊 Total: *{stats['count']}*",
         parse_mode="Markdown", reply_markup=owner_button())
 
+
 async def topref_cmd(update, context):
     top = get_top_referrers(10)
     if not top: await update.message.reply_text("📭 Kosong"); return
@@ -702,6 +728,7 @@ async def topref_cmd(update, context):
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f" {i}."
         text += f"{medal} *{user['nama']}* — {user['ref_count']} ref\n"
     await update.message.reply_text(text, parse_mode="Markdown")
+
 
 async def register_cmd(update, context):
     uid = update.effective_user.id
@@ -746,6 +773,7 @@ async def cek_expired_job(context):
     except Exception as e:
         logger.error(f"cek_expired_job: {e}")
 
+
 async def cekexpired_cmd(update, context):
     uid = update.effective_user.id
     if not is_owner_uid(uid): return
@@ -777,6 +805,7 @@ async def dns_cmd(update, context):
     except Exception as e:
         await msg.edit_text(f"❌ {e}")
 
+
 async def sub_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
@@ -794,6 +823,7 @@ async def sub_cmd(update, context):
     except Exception as e:
         await msg.edit_text(f"❌ {e}")
 
+
 async def whois_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
@@ -809,6 +839,7 @@ async def whois_cmd(update, context):
         await msg.edit_text(f"📋 *WHOIS: {domain}*\n\n`{result[:3500]}`", parse_mode="Markdown")
     except Exception as e:
         await msg.edit_text(f"❌ {e}")
+
 
 async def ip_cmd(update, context):
     uid = update.effective_user.id
@@ -830,6 +861,7 @@ async def ip_cmd(update, context):
     except Exception as e:
         await update.message.reply_text(f"❌ {e}")
 
+
 async def ssl_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
@@ -846,6 +878,7 @@ async def ssl_cmd(update, context):
         await msg.edit_text(text[:4000], parse_mode="Markdown")
     except Exception as e:
         await msg.edit_text(f"❌ {e}")
+
 
 async def tech_cmd(update, context):
     uid = update.effective_user.id
@@ -866,6 +899,7 @@ async def tech_cmd(update, context):
     except Exception as e:
         await msg.edit_text(f"❌ {e}")
 
+
 async def waf_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
@@ -885,6 +919,7 @@ async def waf_cmd(update, context):
     except Exception as e:
         await msg.edit_text(f"❌ {e}")
 
+
 async def shodan_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
@@ -900,6 +935,7 @@ async def shodan_cmd(update, context):
     except Exception as e:
         await msg.edit_text(f"❌ {e}")
 
+
 async def dork_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
@@ -911,6 +947,7 @@ async def dork_cmd(update, context):
     text = f"🔍 *Dorks: {domain}*\n\n"
     for d in dorks: text += f"`{d}`\n"
     await update.message.reply_text(text, parse_mode="Markdown")
+
 
 async def axfr_cmd(update, context):
     uid = update.effective_user.id
@@ -930,6 +967,7 @@ async def axfr_cmd(update, context):
             await msg.edit_text("✅ Gagal (dilindungi)")
     except Exception as e:
         await msg.edit_text(f"❌ {e}")
+
 
 async def rev_cmd(update, context):
     uid = update.effective_user.id
@@ -989,6 +1027,7 @@ async def scan_cmd(update, context):
     except Exception as e:
         logger.error(f"Report: {e}")
 
+
 async def _quick_vuln(update, context, test_name, test_func):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
@@ -1013,12 +1052,14 @@ async def _quick_vuln(update, context, test_name, test_func):
     except Exception as e:
         await msg.edit_text(f"❌ {e}")
 
+
 async def sqli_cmd(update, context): await _quick_vuln(update, context, "sqli", lambda s: s.test_sqli())
 async def xss_cmd(update, context): await _quick_vuln(update, context, "xss", lambda s: s.test_xss())
 async def lfi_cmd(update, context): await _quick_vuln(update, context, "lfi", lambda s: s.test_lfi())
 async def ssrf_cmd(update, context): await _quick_vuln(update, context, "ssrf", lambda s: s.test_ssrf())
 async def redirect_cmd(update, context): await _quick_vuln(update, context, "open redirect", lambda s: s.test_open_redirect())
 async def methods_cmd(update, context): await _quick_vuln(update, context, "http methods", lambda s: s.test_http_methods())
+
 
 async def cors_cmd(update, context):
     uid = update.effective_user.id
@@ -1036,6 +1077,7 @@ async def cors_cmd(update, context):
         await update.message.reply_text(text, parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ {e}")
+
 
 async def dir_cmd(update, context):
     uid = update.effective_user.id
@@ -1080,14 +1122,47 @@ async def _osint_run(update, context, fn, label, usage):
     except Exception:
         await m.edit_text(result)
 
-async def osint_phone_cmd(u, c):     await _osint_run(u, c, scan_phone,       "Phone",    "/phone 628123456789")
-async def osint_email_cmd(u, c):     await _osint_run(u, c, scan_email,       "Email",    "/email target@gmail.com")
-async def osint_username_cmd(u, c):  await _osint_run(u, c, scan_username,    "Username", "/username johndoe")
-async def osint_ip_cmd(u, c):        await _osint_run(u, c, scan_ip,          "IP",       "/ipinfo 8.8.8.8")
-async def osint_nik_cmd(u, c):       await _osint_run(u, c, scan_nik,         "NIK",      "/nik 3201234567890001")
-async def osint_rek_cmd(u, c):       await _osint_run(u, c, scan_rekening,    "Rekening", "/rek 1234567890")
-async def osint_ig_cmd(u, c):        await _osint_run(u, c, scan_ig,          "Instagram","/ig johndoe")
-async def osint_tg_cmd(u, c):        await _osint_run(u, c, scan_telegram,    "Telegram", "/tg johndoe")
+
+async def _osint_run_async(update, context, afn, label, usage):
+    """Untuk fungsi async (mis. scan_rekening versi baru)."""
+    uid = update.effective_user.id
+    ok, msg = cek_akses_osint(uid)
+    if not ok:
+        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=owner_button())
+        return
+    arg = " ".join(context.args) if context.args else ""
+    if not arg:
+        await update.message.reply_text(f"❌ Usage: `{usage}`", parse_mode="Markdown")
+        return
+    m = await update.message.reply_text(f"🔍 {label} `{arg}`...")
+    try:
+        result = await afn(arg)
+    except Exception as e:
+        result = f"❌ Error: {e}"
+    if len(result) > 4000:
+        result = result[:4000] + "\n..."
+    try:
+        await m.edit_text(result, parse_mode="Markdown")
+    except Exception:
+        await m.edit_text(result)
+
+
+async def osint_phone_cmd(u, c):      await _osint_run(u, c, scan_phone,         "Phone",    "/phone 628123456789")
+async def osint_email_cmd(u, c):      await _osint_run(u, c, scan_email,         "Email",    "/email target@gmail.com")
+async def osint_username_cmd(u, c):   await _osint_run(u, c, scan_username,      "Username", "/username johndoe")
+async def osint_ip_cmd(u, c):         await _osint_run(u, c, scan_ip,            "IP",       "/ipinfo 8.8.8.8")
+async def osint_nik_cmd(u, c):        await _osint_run(u, c, scan_nik,           "NIK",      "/nik 3201234567890001")
+async def osint_rek_cmd(u, c):        await _osint_run(u, c, scan_rekening,      "Rekening", "/rek 1234567890")
+async def osint_ig_cmd(u, c):         await _osint_run(u, c, scan_ig,            "Instagram","/ig johndoe")
+async def osint_tg_cmd(u, c):         await _osint_run(u, c, scan_telegram,      "Telegram", "/tg johndoe")
+
+# --- EXTRA OSINT ---
+async def osint_phonetrack_cmd(u, c): await _osint_run_async(u, c, scan_phonetrack,        "PhoneTrack", "/phonetrack 628123456789")
+async def osint_pastebin_cmd(u, c):   await _osint_run_async(u, c, scan_pastebin,          "Pastebin",   "/pastebin example.com")
+async def osint_exif_cmd(u, c):       await _osint_run_async(u, c, scan_exif,              "EXIF",       "/exif https://i.imgur.com/x.jpg")
+async def osint_subhist_cmd(u, c):    await _osint_run_async(u, c, scan_subdomain_history, "SubHist",    "/subhist example.com")
+async def osint_shodand_cmd(u, c):    await _osint_run_async(u, c, scan_shodan_domain,     "Shodan-D",   "/shodand example.com")
+async def osint_leak_cmd(u, c):       await _osint_run_async(u, c, scan_leakcheck,         "LeakCheck",  "/leakcheck email@example.com")
 
 
 # ================== TOOLS ==================
@@ -1101,6 +1176,7 @@ async def base64e_cmd(update, context):
     if not text: return
     await update.message.reply_text(f"```\n{base64_encode(text)}\n```", parse_mode="Markdown")
 
+
 async def base64d_cmd(update, context):
     uid = update.effective_user.id
     status, pesan = cek_akses(uid)
@@ -1112,6 +1188,7 @@ async def base64d_cmd(update, context):
         await update.message.reply_text(f"```\n{base64_decode(text)}\n```", parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ {e}")
+
 
 async def hash_cmd(update, context):
     uid = update.effective_user.id
@@ -1125,6 +1202,7 @@ async def hash_cmd(update, context):
         f"*SHA1:* `{hash_string(text, 'sha1')}`\n"
         f"*SHA256:* `{hash_string(text, 'sha256')}`",
         parse_mode="Markdown")
+
 
 async def jwt_cmd(update, context):
     uid = update.effective_user.id
@@ -1153,6 +1231,7 @@ async def handle_text(update, context):
         await scan_cmd(update, context)
     else:
         await update.message.reply_text(f"❌ Ketik /start untuk menu {NAMA_BOT}.")
+
 
 async def error_handler(update, context):
     logger.error(f"Error: {context.error}")
@@ -1215,6 +1294,13 @@ def main():
     app.add_handler(CommandHandler("rek", osint_rek_cmd))
     app.add_handler(CommandHandler("ig", osint_ig_cmd))
     app.add_handler(CommandHandler("tg", osint_tg_cmd))
+    # OSINT EXTRA
+    app.add_handler(CommandHandler("phonetrack", osint_phonetrack_cmd))
+    app.add_handler(CommandHandler("pastebin", osint_pastebin_cmd))
+    app.add_handler(CommandHandler("exif", osint_exif_cmd))
+    app.add_handler(CommandHandler("subhist", osint_subhist_cmd))
+    app.add_handler(CommandHandler("shodand", osint_shodand_cmd))
+    app.add_handler(CommandHandler("leakcheck", osint_leak_cmd))
     # Tools
     app.add_handler(CommandHandler("base64e", base64e_cmd))
     app.add_handler(CommandHandler("base64d", base64d_cmd))
