@@ -1,12 +1,34 @@
 import subprocess
 import shutil
+import sys
+from pathlib import Path
+
+
+def _find_holehe() -> str:
+    """Cari binary holehe — cek di venv dulu, baru PATH sistem."""
+    # Cek di venv sebelah python yang lagi jalan
+    venv_bin = Path(sys.executable).parent / "holehe"
+    if venv_bin.exists():
+        return str(venv_bin)
+
+    # Fallback: cek PATH sistem
+    which = shutil.which("holehe")
+    if which:
+        return which
+
+    return ""
+
 
 def scan_email(email: str) -> str:
-    if not shutil.which("holehe"):
-        return "❌ `holehe` tidak terinstall. Jalankan: `pip install holehe`"
+    holehe_bin = _find_holehe()
+    if not holehe_bin:
+        return (
+            "❌ `holehe` tidak terinstall.\n\n"
+            "Install: `/root/diablox-hunt/venv/bin/pip install holehe`"
+        )
     try:
         out = subprocess.run(
-            ["holehe", email, "--only-used", "--no-color"],
+            [holehe_bin, email, "--only-used", "--no-color"],
             capture_output=True, text=True, timeout=180
         ).stdout
         if not out.strip():
