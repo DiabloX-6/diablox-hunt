@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
-venv/
-output/
-*.log
 .env
+*.session
+proxy.txt
+venv/
+.venv/
